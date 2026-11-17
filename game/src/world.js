@@ -33,22 +33,22 @@ export class World {
   }
 
   createMaterials() {
-    // Procedural window texture using canvas
+    // Procedural window texture using canvas - daytime architectural tinted glass
     const windowCanvas = document.createElement('canvas');
     windowCanvas.width = 128;
     windowCanvas.height = 128;
     const ctx = windowCanvas.getContext('2d');
-    ctx.fillStyle = '#181b22';
+    ctx.fillStyle = '#627082';
     ctx.fillRect(0, 0, 128, 128);
 
-    // Grid of lit and unlit windows
+    // Grid of lit and reflective windows
     for (let y = 8; y < 128; y += 16) {
       for (let x = 8; x < 128; x += 16) {
         const rand = Math.random();
-        if (rand > 0.45) {
-          ctx.fillStyle = rand > 0.85 ? '#00e5ff' : rand > 0.7 ? '#ff007f' : '#ffd166';
+        if (rand > 0.4) {
+          ctx.fillStyle = rand > 0.85 ? '#00e5ff' : rand > 0.7 ? '#ff007f' : rand > 0.4 ? '#fff176' : '#e0f7fa';
         } else {
-          ctx.fillStyle = '#0d0f13';
+          ctx.fillStyle = '#4c586a';
         }
         ctx.fillRect(x, y, 10, 10);
       }
@@ -58,15 +58,15 @@ export class World {
     windowTex.wrapT = THREE.RepeatWrapping;
     this.textures.set('windows', windowTex);
 
-    // Procedural road asphalt texture
+    // Procedural road asphalt texture - daytime sunny asphalt
     const roadCanvas = document.createElement('canvas');
     roadCanvas.width = 64;
     roadCanvas.height = 64;
     const rctx = roadCanvas.getContext('2d');
-    rctx.fillStyle = '#22252a';
+    rctx.fillStyle = '#5c646e';
     rctx.fillRect(0, 0, 64, 64);
     for (let i = 0; i < 400; i++) {
-      const g = Math.floor(25 + Math.random() * 20);
+      const g = Math.floor(85 + Math.random() * 30);
       rctx.fillStyle = `rgb(${g},${g},${g})`;
       rctx.fillRect(Math.random() * 64, Math.random() * 64, 1.5, 1.5);
     }
@@ -75,29 +75,36 @@ export class World {
     roadTex.wrapT = THREE.RepeatWrapping;
     this.textures.set('asphalt', roadTex);
 
-    // Common materials
-    this.materials.set('road', new THREE.MeshLambertMaterial({ map: roadTex, color: 0x33373d }));
-    this.materials.set('sidewalk', new THREE.MeshLambertMaterial({ color: 0xc4c7cc }));
-    this.materials.set('sand', new THREE.MeshLambertMaterial({ color: 0xe6ca97 }));
-    this.materials.set('water', new THREE.MeshLambertMaterial({ color: 0x0088cc, transparent: true, opacity: 0.82 }));
-    this.materials.set('grass', new THREE.MeshLambertMaterial({ color: 0x388e3c }));
-    this.materials.set('palmTrunk', new THREE.MeshLambertMaterial({ color: 0x5d4037 }));
-    this.materials.set('palmLeaf', new THREE.MeshLambertMaterial({ color: 0x2e7d32, side: THREE.DoubleSide }));
-    this.materials.set('curb', new THREE.MeshLambertMaterial({ color: 0x90a4ae }));
-    this.materials.set('metal', new THREE.MeshStandardMaterial({ color: 0x78909c, roughness: 0.4, metalness: 0.6 }));
+    // Common materials - brightened for daytime Palma Verde
+    this.materials.set('road', new THREE.MeshLambertMaterial({ map: roadTex, color: 0x828994 }));
+    this.materials.set('sidewalk', new THREE.MeshLambertMaterial({ color: 0xe6e8ec }));
+    this.materials.set('sand', new THREE.MeshLambertMaterial({ color: 0xf8e4b8 }));
+    this.materials.set('water', new THREE.MeshLambertMaterial({ color: 0x22b2ee, transparent: true, opacity: 0.85 }));
+    this.materials.set('grass', new THREE.MeshLambertMaterial({ color: 0x52b74a }));
+    this.materials.set('palmTrunk', new THREE.MeshLambertMaterial({ color: 0x6d4c41 }));
+    this.materials.set('palmLeaf', new THREE.MeshLambertMaterial({ color: 0x388e3c, side: THREE.DoubleSide }));
+    this.materials.set('curb', new THREE.MeshLambertMaterial({ color: 0xc0c8cf }));
+    this.materials.set('metal', new THREE.MeshStandardMaterial({ color: 0x90a4ae, roughness: 0.4, metalness: 0.6 }));
     this.materials.set('neonBlue', new THREE.MeshBasicMaterial({ color: 0x00e5ff }));
     this.materials.set('neonPink', new THREE.MeshBasicMaterial({ color: 0xff007f }));
     this.materials.set('neonGold', new THREE.MeshBasicMaterial({ color: 0xffd600 }));
   }
 
   setupLighting() {
-    // Coastal golden hour / bright tropical ambient light
-    const hemiLight = new THREE.HemisphereLight(0x9bd8ff, 0x443322, 0.85);
+    // Bright tropical blue daytime sky
+    this.scene.background = new THREE.Color(0x7ec8f8);
+
+    // Tropical daylight hemisphere light (sky blue + soft ground bounce)
+    const hemiLight = new THREE.HemisphereLight(0xe8f5ff, 0x8a9ba8, 1.35);
     this.scene.add(hemiLight);
 
-    // Warm tropical Sun
-    const sunLight = new THREE.DirectionalLight(0xfff3db, 1.25);
-    sunLight.position.set(150, 220, 120);
+    // Ambient light fill to prevent pitch black shadowed areas
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.55);
+    this.scene.add(ambientLight);
+
+    // Radiant tropical high sun
+    const sunLight = new THREE.DirectionalLight(0xfff8eb, 2.2);
+    sunLight.position.set(120, 240, 100);
     sunLight.castShadow = true;
     sunLight.shadow.mapSize.width = 1024;
     sunLight.shadow.mapSize.height = 1024;
@@ -110,8 +117,8 @@ export class World {
     sunLight.shadow.camera.bottom = -d;
     this.scene.add(sunLight);
 
-    // Tropical sky atmosphere fog
-    this.scene.fog = new THREE.FogExp2(0xa6d8f0, 0.0022);
+    // Soft tropical coastal fog matching daytime sky
+    this.scene.fog = new THREE.FogExp2(0x9fd8f6, 0.0016);
   }
 
   buildTerrainAndOcean() {
@@ -256,7 +263,7 @@ export class World {
 
         if (isDowntown) {
           height = 45 + Math.random() * 45; // 45m - 90m highrises
-          color = [0x1565c0, 0x00838f, 0x283593, 0x212121, 0x37474f][Math.floor(Math.random() * 5)];
+          color = [0x546e7a, 0x5c6bc0, 0x42a5f5, 0x607d8b, 0x4f83cc][Math.floor(Math.random() * 5)];
           style = 'highrise';
         } else if (isBeachFront) {
           height = 18 + Math.random() * 26; // Art-deco pastel beach hotels
@@ -264,11 +271,11 @@ export class World {
           style = 'artdeco';
         } else if (isHarbor) {
           height = 14 + Math.random() * 18; // Industrial warehouses & containers
-          color = [0x546e7a, 0x78909c, 0xc62828, 0xef6c00, 0x1565c0][Math.floor(Math.random() * 5)];
+          color = [0x78909c, 0x90a4ae, 0xd32f2f, 0xf57c00, 0x1976d2][Math.floor(Math.random() * 5)];
           style = 'industrial';
         } else {
           height = 16 + Math.random() * 24; // Suburbs & commercial
-          color = [0xd7ccc8, 0xcfd8dc, 0xb0bec5, 0xffccbc][Math.floor(Math.random() * 4)];
+          color = [0xe0d7cf, 0xced6dc, 0xb8c5cc, 0xffe2cc][Math.floor(Math.random() * 4)];
           style = 'commercial';
         }
 
@@ -284,8 +291,8 @@ export class World {
     const materials = [
       new THREE.MeshLambertMaterial({ map: winTex, color: baseColor }),
       new THREE.MeshLambertMaterial({ map: winTex, color: baseColor }),
-      new THREE.MeshLambertMaterial({ color: 0x37474f }), // roof
-      new THREE.MeshLambertMaterial({ color: 0x212121 }), // base
+      new THREE.MeshLambertMaterial({ color: 0x78909c }), // roof
+      new THREE.MeshLambertMaterial({ color: 0x546e7a }), // base
       new THREE.MeshLambertMaterial({ map: winTex, color: baseColor }),
       new THREE.MeshLambertMaterial({ map: winTex, color: baseColor }),
     ];

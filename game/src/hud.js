@@ -186,7 +186,7 @@ export class HUDManager {
     const start = document.createElement('div');
     start.id = 'screen-start';
     start.style.cssText = `
-      position: fixed; inset: 0; background: radial-gradient(circle at center, rgba(14,24,42,0.85) 0%, rgba(5,8,15,0.96) 100%);
+      position: fixed; inset: 0; background: radial-gradient(circle at center, rgba(12,20,36,0.30) 0%, rgba(6,12,24,0.55) 100%);
       display: flex; flex-direction: column; justify-content: center; align-items: center;
       z-index: 100; pointer-events: auto; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     `;

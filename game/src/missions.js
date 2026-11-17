@@ -30,15 +30,27 @@ export class MissionManager {
     const beamMat = new THREE.MeshBasicMaterial({
       color: 0x00e5ff,
       transparent: true,
-      opacity: 0.45,
+      opacity: 0.65,
       side: THREE.DoubleSide,
     });
     const beam = new THREE.Mesh(beamGeo, beamMat);
     beam.position.y = 30;
     group.add(beam);
 
+    // Bright inner core beam
+    const coreGeo = new THREE.CylinderGeometry(0.8, 0.8, 60, 12, 1, true);
+    const coreMat = new THREE.MeshBasicMaterial({
+      color: 0xe0ffff,
+      transparent: true,
+      opacity: 0.85,
+      side: THREE.DoubleSide,
+    });
+    const core = new THREE.Mesh(coreGeo, coreMat);
+    core.position.y = 30;
+    group.add(core);
+
     // Glowing ground ring
-    const ringGeo = new THREE.RingGeometry(2.0, 3.8, 24);
+    const ringGeo = new THREE.RingGeometry(2.0, 4.2, 24);
     ringGeo.rotateX(-Math.PI / 2);
     const ringMat = new THREE.MeshBasicMaterial({
       color: 0xffd600,
@@ -48,7 +60,7 @@ export class MissionManager {
     ring.position.y = 0.15;
     group.add(ring);
 
-    group.userData = { beam, ring };
+    group.userData = { beam, core, ring };
     return group;
   }
 

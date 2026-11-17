@@ -90,7 +90,7 @@ export const CONFIG = {
       steerSpeed: 1.9,
       health: 280,
       mass: 1700,
-      colors: [0x111111],
+      colors: [0x262a30],
     },
     TAXI: {
       type: 'taxi',

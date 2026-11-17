@@ -12,18 +12,18 @@ export class VehicleManager {
 
     // Shared materials for performance
     this.materials = {
-      glass: new THREE.MeshLambertMaterial({ color: 0x112233, transparent: true, opacity: 0.85 }),
-      tire: new THREE.MeshLambertMaterial({ color: 0x1a1a1a }),
-      rim: new THREE.MeshStandardMaterial({ color: 0xd0d0d0, metalness: 0.8, roughness: 0.2 }),
+      glass: new THREE.MeshLambertMaterial({ color: 0x4a6b82, transparent: true, opacity: 0.85 }),
+      tire: new THREE.MeshLambertMaterial({ color: 0x333333 }),
+      rim: new THREE.MeshStandardMaterial({ color: 0xe0e0e0, metalness: 0.8, roughness: 0.2 }),
       headlightOff: new THREE.MeshBasicMaterial({ color: 0xffffff }),
       headlightOn: new THREE.MeshBasicMaterial({ color: 0xfff9c4 }),
-      taillightOff: new THREE.MeshBasicMaterial({ color: 0x5a1010 }),
+      taillightOff: new THREE.MeshBasicMaterial({ color: 0x8a2020 }),
       taillightBrake: new THREE.MeshBasicMaterial({ color: 0xff1744 }),
       policeRed: new THREE.MeshBasicMaterial({ color: 0xff1744 }),
-      policeBlue: new THREE.MeshBasicMaterial({ color: 0x2979ff }),
+      policeBlue: new THREE.MeshBasicMaterial({ color: 0x00b0ff }),
       policeWhite: new THREE.MeshLambertMaterial({ color: 0xffffff }),
-      policeBlack: new THREE.MeshLambertMaterial({ color: 0x111111 }),
-      bumper: new THREE.MeshStandardMaterial({ color: 0x37474f, metalness: 0.5, roughness: 0.5 }),
+      policeBlack: new THREE.MeshLambertMaterial({ color: 0x2a2e34 }),
+      bumper: new THREE.MeshStandardMaterial({ color: 0x607d8b, metalness: 0.5, roughness: 0.5 }),
       taxiSign: new THREE.MeshBasicMaterial({ color: 0xffea00 }),
     };
   }
@@ -75,13 +75,8 @@ export class VehicleManager {
       doorMesh.position.set(0, height * 0.45, -0.1);
       group.add(doorMesh);
 
-      // Lightbar on roof
-      const barGeo = new THREE.BoxGeometry(width * 0.65, 0.18, 0.35);
-      const barMesh = new THREE.Mesh(barGeo, this.materials.policeBlue);
-      barMesh.position.set(0, height * 0.75 + cabinH + 0.12, cabinZOffset);
-      group.add(barMesh);
-
-      // Red/Blue strobe halves
+      // Red/Blue strobe halves form the lightbar itself (a full-width
+      // blue bar here used to swallow them, so no strobe was ever visible)
       const redHalf = new THREE.Mesh(new THREE.BoxGeometry(width * 0.3, 0.16, 0.3), this.materials.policeRed);
       redHalf.position.set(-width * 0.16, height * 0.75 + cabinH + 0.12, cabinZOffset);
       group.add(redHalf);
@@ -174,6 +169,7 @@ export class VehicleManager {
       preset,
       group,
       wheels,
+      bodyMat,
       tlLeft,
       tlRight,
       position: group.position,

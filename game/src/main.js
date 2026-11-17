@@ -22,6 +22,7 @@ export class Game {
 
     // Three.js Core
     this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x7ec8f8);
     this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
     this.renderer = null;
 
@@ -79,6 +80,8 @@ export class Game {
       () => this.restartGame(),
       () => this.toggleMute(),
     );
+
+    window.__game = this;
 
     // Window Resize Handler
     window.addEventListener('resize', () => {
