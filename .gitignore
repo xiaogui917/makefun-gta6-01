@@ -1,0 +1,6 @@
+out/
+.shot-tools/
+node_modules/
+.env
+*.keypair
+*keypair*.json
