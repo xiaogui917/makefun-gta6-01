@@ -1,134 +1,298 @@
-// Boot and the one loop: input is read every frame, the world advances in fixed 1/60 s steps
-// (several in a slow frame, none in a fast one), and the renderer paints what is there. The game
-// moves between four screens: title, play, paused and game over.
-//
-// ?seed=N fixes the falling pattern. ?shot=start|play|end (with &seed=N) stages that scene
-// instead of running the loop, paints it twice and sets window.__shotReady for a screenshot.
-import { BEST_KEY, LIVES, STEP } from './config.js';
-import { createRandom } from './random.js';
-import { createWorld, EVENT_HIT, EVENT_OVER } from './world.js';
-import { ACTION_CONFIRM, ACTION_PAUSE, createInput } from './input.js';
-import { createRenderer, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
-import { stageShot } from './shots.js';
+// Neon Tide - Main Entrypoint & Game Loop
+// Palma Verde 3D Open World
 
-/** The longest frame the loop catches up on; a longer stall (a hidden tab) is dropped, not replayed. */
-const MAX_FRAME = 0.25;
+import * as THREE from 'three';
+import { CONFIG } from './config.js';
+import { InputManager } from './input.js';
+import { AudioManager } from './audio.js';
+import { World } from './world.js';
+import { Player } from './player.js';
+import { VehicleManager } from './vehicles.js';
+import { PedestrianManager } from './pedestrians.js';
+import { PoliceManager } from './police.js';
+import { MissionManager } from './missions.js';
+import { CombatManager } from './combat.js';
+import { HUDManager } from './hud.js';
+import { setupShotMode } from './shots.js';
 
-const params = new URLSearchParams(window.location.search);
-const shot = params.get('shot');
-const seedParam = Number.parseInt(params.get('seed') ?? '', 10);
-const seed = Number.isInteger(seedParam) ? seedParam : Math.floor(Math.random() * 4294967296);
+export class Game {
+  constructor() {
+    this.state = 'START'; // START, PLAYING, PAUSED, BUSTED, WASTED
+    this.clock = new THREE.Clock();
 
-const canvas = document.getElementById('game');
-const status = document.getElementById('status');
-const world = createWorld(createRandom(seed));
-const renderer = createRenderer(canvas);
+    // Three.js Core
+    this.scene = new THREE.Scene();
+    this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+    this.renderer = null;
 
-function readBest() {
-  try {
-    return Number.parseInt(window.localStorage.getItem(BEST_KEY) ?? '0', 10) || 0;
-  } catch {
-    return 0;
-  }
-}
+    // Subsystems
+    this.input = new InputManager();
+    this.audio = new AudioManager();
+    this.world = null;
+    this.player = null;
+    this.vehicles = null;
+    this.pedestrians = null;
+    this.police = null;
+    this.missions = null;
+    this.combat = null;
+    this.hud = null;
 
-function saveBest(value) {
-  try {
-    window.localStorage.setItem(BEST_KEY, String(value));
-  } catch {
-    // Storage can be off (private windows): the best score then lasts this visit only.
-  }
-}
-
-function runShot(name) {
-  const scene = stageShot(name, world);
-  let painted = 0;
-  function paint() {
-    renderer.draw(world.state, scene.screen, scene.best);
-    painted += 1;
-    if (painted < 2) requestAnimationFrame(paint);
-    else window.__shotReady = true;
-  }
-  requestAnimationFrame(paint);
-}
-
-function runGame() {
-  const input = createInput(canvas);
-  let screen = SCREEN_TITLE;
-  let best = readBest();
-  let accumulator = 0;
-  let last = performance.now();
-
-  // Screen readers (and anyone watching the page's text) hear the screen changes and each hit.
-  function announce(message) {
-    status.textContent = message;
+    this.isShotMode = false;
   }
 
-  function startGame() {
-    world.reset();
-    accumulator = 0;
-    screen = SCREEN_PLAY;
-    announce(`Playing. ${LIVES} lives.`);
-  }
+  init() {
+    // Canvas & WebGL Renderer
+    const canvas = document.getElementById('game-canvas') || document.getElementById('game');
+    this.renderer = new THREE.WebGLRenderer({
+      canvas: canvas,
+      antialias: true,
+      powerPreference: 'high-performance',
+    });
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-  function endGame() {
-    screen = SCREEN_OVER;
-    if (world.state.score > best) {
-      best = world.state.score;
-      saveBest(best);
+    // Initialize Subsystems
+    this.input.init(canvas);
+    this.world = new World(this.scene);
+    this.world.build();
+
+    this.player = new Player(this.scene, this.camera);
+    this.vehicles = new VehicleManager(this.scene, this.audio);
+    this.vehicles.init();
+
+    this.pedestrians = new PedestrianManager(this.scene, this.audio);
+    this.pedestrians.init(this.world);
+
+    this.police = new PoliceManager(this.scene, this.audio, this.vehicles);
+    this.missions = new MissionManager(this.scene, this.audio);
+    this.combat = new CombatManager(this.scene, this.audio);
+    this.combat.init(this.world);
+
+    this.hud = new HUDManager();
+    this.hud.init(
+      () => this.startNewGame(),
+      () => this.loadGame(),
+      () => this.resumeGame(),
+      () => this.saveGame(),
+      () => this.restartGame(),
+      () => this.toggleMute(),
+    );
+
+    // Window Resize Handler
+    window.addEventListener('resize', () => {
+      this.camera.aspect = window.innerWidth / window.innerHeight;
+      this.camera.updateProjectionMatrix();
+      this.renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Check for Deterministic Screenshot Mode (?shot=start|drive|chase|mission)
+    const urlParams = new URLSearchParams(window.location.search);
+    const shotParam = urlParams.get('shot');
+
+    if (shotParam) {
+      this.isShotMode = true;
+      setupShotMode(shotParam, this);
+    } else {
+      // Normal game start
+      this.state = 'START';
+      this.camera.position.set(-180, 45, 120);
+      this.camera.lookAt(-20, 25, -20);
     }
-    announce(`Game over. Score ${world.state.score}. Best ${best}.`);
+
+    // Start Animation Loop
+    this.loop();
   }
 
-  function handleActions() {
-    const actions = input.takeActions();
-    if (actions & ACTION_CONFIRM && (screen === SCREEN_TITLE || screen === SCREEN_OVER)) startGame();
-    else if (actions & ACTION_PAUSE && screen === SCREEN_PLAY) {
-      screen = SCREEN_PAUSED;
-      announce('Paused.');
-    } else if (actions & (ACTION_PAUSE | ACTION_CONFIRM) && screen === SCREEN_PAUSED) {
-      screen = SCREEN_PLAY;
-      announce('Playing.');
-    }
+  startNewGame() {
+    this.audio.init();
+    this.audio.startMusic();
+    this.state = 'PLAYING';
+    this.player.position.set(0, 0.5, 0);
+    this.player.health = CONFIG.PLAYER.MAX_HEALTH;
+    this.player.cash = CONFIG.PLAYER.START_CASH;
+    this.missions.startMission(0); // Start Mission 1: First Wheels
+    this.input.requestPointerLock();
   }
 
-  function step() {
-    if (screen === SCREEN_TITLE) {
-      world.step(STEP, 0, true);
+  resumeGame() {
+    this.state = 'PLAYING';
+    this.input.requestPointerLock();
+  }
+
+  pauseGame() {
+    this.state = 'PAUSED';
+    this.hud.pauseScreen.style.display = 'flex';
+    this.input.exitPointerLock();
+  }
+
+  restartGame() {
+    this.state = 'PLAYING';
+    this.player.respawn();
+    this.police.setWantedLevel(0);
+    this.missions.startMission(0);
+    this.input.requestPointerLock();
+  }
+
+  toggleMute() {
+    const isMuted = this.audio.toggleMute();
+    this.hud.showToast(isMuted ? 'Audio Muted' : 'Audio Enabled');
+  }
+
+  saveGame() {
+    const saveData = {
+      cash: this.player.cash,
+      health: this.player.health,
+      ammo: this.player.ammo,
+      completedCount: this.missions.completedCount,
+      missionIndex: this.missions.currentMissionIndex,
+      posX: this.player.position.x,
+      posZ: this.player.position.z,
+    };
+    try {
+      localStorage.setItem('neontide_save', JSON.stringify(saveData));
+    } catch (_) {}
+  }
+
+  loadGame() {
+    this.audio.init();
+    this.audio.startMusic();
+    try {
+      const raw = localStorage.getItem('neontide_save');
+      if (raw) {
+        const data = JSON.parse(raw);
+        this.player.cash = data.cash || CONFIG.PLAYER.START_CASH;
+        this.player.health = data.health || CONFIG.PLAYER.MAX_HEALTH;
+        this.player.ammo = data.ammo || CONFIG.PLAYER.START_AMMO;
+        this.player.position.set(data.posX || 0, 0.5, data.posZ || 0);
+        this.missions.completedCount = data.completedCount || 0;
+        this.missions.startMission(data.missionIndex || 0);
+      } else {
+        this.startNewGame();
+        return;
+      }
+    } catch (_) {
+      this.startNewGame();
       return;
     }
-    const events = world.step(STEP, input.direction(), false);
-    if (events & EVENT_OVER) endGame();
-    else if (events & EVENT_HIT) announce(world.state.lives === 1 ? 'Hit. 1 life left.' : `Hit. ${world.state.lives} lives left.`);
+
+    this.state = 'PLAYING';
+    this.input.requestPointerLock();
   }
 
-  function frame(now) {
-    requestAnimationFrame(frame);
-    accumulator += Math.min((now - last) / 1000, MAX_FRAME);
-    last = now;
-    handleActions();
-    if (screen === SCREEN_TITLE || screen === SCREEN_PLAY) {
-      while (accumulator >= STEP && (screen === SCREEN_TITLE || screen === SCREEN_PLAY)) {
-        step();
-        accumulator -= STEP;
+  handleBusted() {
+    this.state = 'BUSTED';
+    this.audio.stopSiren();
+    this.player.cash = Math.max(0, this.player.cash - CONFIG.WANTED.BUSTED_FEE);
+    this.input.exitPointerLock();
+
+    this.hud.showBusted(false, CONFIG.WANTED.BUSTED_FEE, () => {
+      this.player.respawn();
+      this.state = 'PLAYING';
+      this.input.requestPointerLock();
+    });
+  }
+
+  handleWasted() {
+    this.state = 'WASTED';
+    this.audio.stopSiren();
+    this.player.cash = Math.max(0, this.player.cash - CONFIG.WANTED.HOSPITAL_FEE);
+    this.input.exitPointerLock();
+
+    this.hud.showBusted(true, CONFIG.WANTED.HOSPITAL_FEE, () => {
+      this.player.respawn();
+      this.state = 'PLAYING';
+      this.input.requestPointerLock();
+    });
+  }
+
+  loop() {
+    requestAnimationFrame(() => this.loop());
+
+    const delta = this.clock.getDelta();
+    const dt = Math.min(delta, 0.05);
+    const elapsed = this.clock.getElapsedTime();
+
+    if (!this.isShotMode) {
+      // Toggle Pause
+      if (this.input.justPause()) {
+        if (this.state === 'PLAYING') this.pauseGame();
+        else if (this.state === 'PAUSED') this.resumeGame();
       }
-    } else {
-      accumulator = 0;
+
+      // Toggle Mute
+      if (this.input.justMute()) {
+        this.toggleMute();
+      }
     }
-    renderer.draw(world.state, screen, best);
+
+    if (this.state === 'PLAYING') {
+      // Update Subsystems
+      this.world.update(dt, elapsed);
+      this.player.update(dt, this.input, this.world, this.vehicles.vehicles);
+      this.vehicles.update(dt, this.input, this.world, this.player);
+      this.pedestrians.update(dt, this.player, this.vehicles, this.world, (crime) => {
+        this.police.reportCrime(crime);
+      });
+      this.police.update(
+        dt,
+        this.player,
+        this.world,
+        () => this.handleBusted(),
+        () => this.handleWasted(),
+      );
+      this.missions.update(dt, this.player, this.police, (mission) => {
+        this.hud.showMissionPassed(mission);
+        this.saveGame();
+      });
+      this.combat.update(
+        dt,
+        this.input,
+        this.player,
+        this.pedestrians,
+        this.police,
+        this.vehicles,
+        this.world,
+      );
+
+      // Check item pickups
+      for (const p of this.world.pickups) {
+        if (!p.active) continue;
+        if (Math.hypot(this.player.position.x - p.x, this.player.position.z - p.z) < 2.4) {
+          p.active = false;
+          p.group.visible = false;
+          p.respawnTimer = CONFIG.PICKUPS.RESPAWN_TIME;
+          this.audio.playPickup();
+
+          if (p.type === 'HEALTH') {
+            this.player.health = Math.min(CONFIG.PLAYER.MAX_HEALTH, this.player.health + p.value);
+            this.hud.showToast('+40 HP Health Picked Up');
+          } else if (p.type === 'AMMO') {
+            this.player.ammo = Math.min(CONFIG.PLAYER.MAX_AMMO, this.player.ammo + p.value);
+            this.hud.showToast('+30 Rounds Pistol Ammo');
+          } else if (p.type === 'CASH') {
+            this.player.cash += p.value;
+            this.hud.showToast(`+$${p.value} Cash Briefcase`);
+          }
+        }
+      }
+
+      this.hud.update(dt, this.player, this.police, this.missions, this.world, this.vehicles);
+      this.input.update();
+    } else if (this.isShotMode) {
+      // In shot mode, keep world and HUD updated
+      this.world.update(dt, elapsed);
+      this.hud.update(dt, this.player, this.police, this.missions, this.world, this.vehicles);
+    }
+
+    // Render Scene
+    this.renderer.render(this.scene, this.camera);
   }
-
-  // Leaving the tab pauses a running game rather than letting blocks fall unseen.
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden && screen === SCREEN_PLAY) {
-      screen = SCREEN_PAUSED;
-      announce('Paused.');
-    }
-  });
-
-  announce('Block Dodger. Press Space or click to start.');
-  requestAnimationFrame(frame);
 }
 
-if (shot) runShot(shot);
-else runGame();
+// Bootstrap game when window loads
+window.addEventListener('DOMContentLoaded', () => {
+  const game = new Game();
+  game.init();
+});

@@ -1,53 +1,179 @@
-// Keyboard and pointer input. Held keys give a steering direction; one-shot presses (start or
-// restart, pause) are queued as bit flags and taken once by the loop, so a press between two
-// frames is never lost and never counted twice.
+// Neon Tide - Input Manager
+// Handles Keyboard, Mouse orbit, and Action states
 
-export const ACTION_CONFIRM = 1;
-export const ACTION_PAUSE = 2;
+export class InputManager {
+  constructor() {
+    this.keys = new Map();
+    this.prevKeys = new Map();
+    this.justPressedKeys = new Set();
 
-const LEFT = new Set(['ArrowLeft', 'KeyA']);
-const RIGHT = new Set(['ArrowRight', 'KeyD']);
-const CONFIRM = new Set(['Space', 'Enter']);
-const PAUSE = new Set(['KeyP', 'Escape']);
+    this.mouse = {
+      x: 0,
+      y: 0,
+      dx: 0,
+      dy: 0,
+      leftDown: false,
+      rightDown: false,
+      leftJustPressed: false,
+      isLocked: false,
+    };
 
-export function createInput(target) {
-  let left = false;
-  let right = false;
-  let actions = 0;
+    this.domElement = null;
+    this.enabled = true;
+  }
 
-  window.addEventListener('keydown', (event) => {
-    if (LEFT.has(event.code)) left = true;
-    else if (RIGHT.has(event.code)) right = true;
-    else if (CONFIRM.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_CONFIRM;
-    } else if (PAUSE.has(event.code)) {
-      if (!event.repeat) actions |= ACTION_PAUSE;
-    } else return;
-    event.preventDefault();
-  });
-  window.addEventListener('keyup', (event) => {
-    if (LEFT.has(event.code)) left = false;
-    else if (RIGHT.has(event.code)) right = false;
-  });
-  // A key released while the tab is hidden never sends keyup: let go of everything on blur.
-  window.addEventListener('blur', () => {
-    left = false;
-    right = false;
-  });
-  target.addEventListener('pointerdown', () => {
-    actions |= ACTION_CONFIRM;
-  });
+  init(domElement = window) {
+    this.domElement = domElement;
 
-  return {
-    /** -1 for left, 1 for right, 0 for neither or both. */
-    direction() {
-      return (right ? 1 : 0) - (left ? 1 : 0);
-    },
-    /** The one-shot presses since the last call, as ACTION_* flags. */
-    takeActions() {
-      const taken = actions;
-      actions = 0;
-      return taken;
-    },
-  };
+    window.addEventListener('keydown', (e) => this.onKeyDown(e));
+    window.addEventListener('keyup', (e) => this.onKeyUp(e));
+    window.addEventListener('mousemove', (e) => this.onMouseMove(e));
+    window.addEventListener('mousedown', (e) => this.onMouseDown(e));
+    window.addEventListener('mouseup', (e) => this.onMouseUp(e));
+    window.addEventListener('contextmenu', (e) => e.preventDefault());
+
+    document.addEventListener('pointerlockchange', () => {
+      this.mouse.isLocked = document.pointerLockElement === this.domElement;
+    });
+  }
+
+  requestPointerLock() {
+    if (this.domElement && this.domElement.requestPointerLock) {
+      try {
+        this.domElement.requestPointerLock();
+      } catch (_) {}
+    }
+  }
+
+  exitPointerLock() {
+    if (document.exitPointerLock) {
+      try {
+        document.exitPointerLock();
+      } catch (_) {}
+    }
+  }
+
+  onKeyDown(e) {
+    const code = e.code;
+    if (!this.keys.get(code)) {
+      this.justPressedKeys.add(code);
+    }
+    this.keys.set(code, true);
+
+    // Prevent scrolling for game controls
+    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(code)) {
+      e.preventDefault();
+    }
+  }
+
+  onKeyUp(e) {
+    this.keys.set(e.code, false);
+  }
+
+  onMouseMove(e) {
+    if (this.mouse.isLocked) {
+      this.mouse.dx += e.movementX || 0;
+      this.mouse.dy += e.movementY || 0;
+    } else if (this.mouse.rightDown || this.mouse.leftDown) {
+      this.mouse.dx += e.movementX || 0;
+      this.mouse.dy += e.movementY || 0;
+    }
+    this.mouse.x = e.clientX;
+    this.mouse.y = e.clientY;
+  }
+
+  onMouseDown(e) {
+    if (e.button === 0) {
+      this.mouse.leftDown = true;
+      this.mouse.leftJustPressed = true;
+    } else if (e.button === 2) {
+      this.mouse.rightDown = true;
+    }
+  }
+
+  onMouseUp(e) {
+    if (e.button === 0) {
+      this.mouse.leftDown = false;
+    } else if (e.button === 2) {
+      this.mouse.rightDown = false;
+    }
+  }
+
+  // Poll & clear one-frame triggers
+  update() {
+    this.justPressedKeys.clear();
+    this.mouse.leftJustPressed = false;
+  }
+
+  consumeMouseDelta() {
+    const dx = this.mouse.dx;
+    const dy = this.mouse.dy;
+    this.mouse.dx = 0;
+    this.mouse.dy = 0;
+    return { dx, dy };
+  }
+
+  isDown(code) {
+    return !!this.keys.get(code);
+  }
+
+  wasJustPressed(code) {
+    return this.justPressedKeys.has(code);
+  }
+
+  // High-level gameplay queries
+  isForward() {
+    return this.isDown('KeyW') || this.isDown('ArrowUp');
+  }
+
+  isBackward() {
+    return this.isDown('KeyS') || this.isDown('ArrowDown');
+  }
+
+  isLeft() {
+    return this.isDown('KeyA') || this.isDown('ArrowLeft');
+  }
+
+  isRight() {
+    return this.isDown('KeyD') || this.isDown('ArrowRight');
+  }
+
+  isSprint() {
+    return this.isDown('ShiftLeft') || this.isDown('ShiftRight');
+  }
+
+  isHandbrake() {
+    return this.isDown('Space');
+  }
+
+  justEnterVehicle() {
+    return this.wasJustPressed('KeyE');
+  }
+
+  justPunch() {
+    return this.wasJustPressed('KeyF');
+  }
+
+  justShoot() {
+    return this.mouse.leftJustPressed;
+  }
+
+  justPause() {
+    return this.wasJustPressed('KeyP') || this.wasJustPressed('Escape');
+  }
+
+  justMute() {
+    return this.wasJustPressed('KeyM');
+  }
+
+  reset() {
+    this.keys.clear();
+    this.prevKeys.clear();
+    this.justPressedKeys.clear();
+    this.mouse.dx = 0;
+    this.mouse.dy = 0;
+    this.mouse.leftDown = false;
+    this.mouse.rightDown = false;
+    this.mouse.leftJustPressed = false;
+  }
 }
