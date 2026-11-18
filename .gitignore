@@ -3,4 +3,6 @@ out/
 node_modules/
 .env
 *.keypair
+*.keypair.json
 *keypair*.json
+wallet.json

@@ -1,123 +1,89 @@
-# Neon Tide - Palma Verde Stories
+# Neon Tide: Palma Verde
 
-[![make.fun competition](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01)
-[![make.fun rank](https://make.fun/badge/gta6-01/xiaogui917/makefun-gta6-01/rank.svg)](https://make.fun/bounty/gta6-01)
-[![make.fun reward](https://make.fun/badge/gta6-01/xiaogui917/makefun-gta6-01/reward.svg)](https://make.fun/bounty/gta6-01)
+[![Competition](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01)
+[![Rank](https://make.fun/badge/gta6-01/xiaogui917/makefun-gta6-01/rank.svg)](https://make.fun/bounty/gta6-01)
+[![Reward](https://make.fun/badge/gta6-01/xiaogui917/makefun-gta6-01/reward.svg)](https://make.fun/bounty/gta6-01)
 
-**Neon Tide** is an open-world 3D crime action game built for the [make.fun gta6-01](https://make.fun/bounty/gta6-01) competition.
-
-Set in the sun-soaked, synth-lit coastal metropolis of **Palma Verde**, players take on the role of Dante Rios, navigating high-stakes crime, high-speed vehicle getaways, and intense tactical police pursuits across diverse city districts.
+**Neon Tide** is an open-world 3D crime action game set in the fictional coastal metropolis of **Palma Verde**, 1986. Built entirely with Three.js, ES modules, and procedural WebAudio sound synthesis, the game delivers an authentic 80s synthwave crime experience running offline in any modern desktop browser with zero external network requests.
 
 ---
 
-## Features
+## Game Features
 
-- **Living 3D City (Palma Verde)**:
-  - Multi-lane road grid, sidewalks with curbs, and crosswalks.
-  - Distinct architectural districts: Downtown highrises with lit neon windows and rooftop spires, Art-Deco pastel beachfront hotels, Port Lorenzo industrial warehouses with cargo containers, and Palma Heights residential plazas.
-  - Coastal highway along Ocean Boulevard with sandy beaches, palm trees, and animated ocean water.
-  - Collectible pickups: Health medkits (+40 HP), Ammo crates (+30 rounds), and Cash briefcases (+$250).
-
-- **Vehicles & Arcade Driving Physics**:
-  - Stealable parked cars and active NPC traffic cruising city road corridors.
-  - Diverse vehicle fleet: Vipera GT (sports coupe), Stallion 400 (4-door sedan), Palma PD Interceptor (police cruiser), Sun Cab (taxi), and Hauler Cargo (van).
-  - Acceleration, braking, reverse gear, handbrake drift sliding, wheel rotation, steering wheel pivot, and headlights.
-  - Vehicle damage, collision impacts, and deformation.
-
-- **Pedestrian Life & Pedestrian AI**:
-  - Citizens strolling along sidewalks with randomized appearances.
-  - Reactive AI: pedestrians panic and run away with flailing limbs when gunshots are fired or speeding cars crash nearby.
-  - Downed pedestrians drop cash that can be scavenged.
-
-- **5-Star Wanted System & Police Pursuit AI**:
-  - Dynamic crime detection: vehicle theft (+1★), assault/hit-and-run (+2★), firearm discharge (+1★), ramming police vehicles (+2★), and attacking officers (+3★).
-  - Palma Verde PD dispatches high-speed pursuit cruisers with alternating red/blue light bars and wailing sirens.
-  - Evasion & search mechanic: break line of sight and evade cruisers for 14 seconds to drop wanted stars back to 0.
-  - Busted / Wasted system: surrounded or downed players respawn outside Central Hospital with bail/medical fines.
-
-- **Story Campaign & Missions**:
-  - **Mission 1: First Wheels**: Locate and hotwire the Vipera GT near Club Neon downtown and deliver it to Lorenzo's Harbor Garage ($500).
-  - **Mission 2: Bay Courier**: High-speed timed delivery across 3 coastal checkpoints along Ocean Boulevard ($1,200).
-  - **Mission 3: Heat Run**: Survive a mandatory 3-Star PVPD pursuit, lose the tail, and deliver contraband safely to the safehouse ($3,000).
-  - 3D neon waypoint beacons and minimap GPS markers.
-
-- **Combat System**:
-  - Unarmed melee punch with forward impact detection (`F`).
-  - Pistol shooting with bullet tracers, raycast hit detection, and sound effects (Left Click).
-  - Hostile syndicate gang enforcers guarding Port Lorenzo who return fire when provoked.
-
-- **Cyber-Retro HUD & Radar Minimap**:
-  - Player health bar, armor bar, cash counter, weapon ammo status.
-  - Dynamic flashing 5-star wanted display.
-  - Digital speedometer with MPH and RPM throttle indicator when driving.
-  - Real-time rotating 2D Canvas radar minimap with roads, ocean boundary, player heading arrow, police blips, and mission waypoints.
-  - Start screen with lore prologue, pause menu, game over screen, and mission success banners.
-
-- **100% Procedural Web Audio**:
-  - Dynamic engine pitch modulation based on RPM and speed.
-  - Oscillating police siren wails.
-  - Synthesized gunshot cracks and punch impacts.
-  - Looping ambient synthwave soundtrack generated via Web Audio API oscillators and filters.
-  - Audio mute toggle (`M`).
-
-- **Save / Load Persistence**:
-  - Saves progress, cash, health, ammo, and completed mission state to `localStorage`.
-  - Auto-saves upon mission completion; manual save available in the pause menu.
+- **Living Open World City**: 600m x 600m urban expanse spanning four distinct districts:
+  - *Oceanfront Promenade*: Sun-drenched coastal drive lined with palm trees, beaches, and art deco hotels.
+  - *Downtown Skylines*: Towering skyscrapers with illuminated neon windows.
+  - *Port & Industrial District*: Warehouses, shipping yards, and hostile syndicate territory.
+  - *Palma Suburbs*: Residential neighborhoods with winding streets.
+- **Dynamic AI Traffic & Stealable Vehicles**: Five driveable vehicle types:
+  - *Verde Turbo GT*: Fast, high-acceleration sports car.
+  - *Palma Cruiser*: Four-door family sedan.
+  - *Metro Police Cruiser*: High-speed pursuit car with flashing sirens.
+  - *Cab 86*: Classic yellow city taxi.
+  - *Cargo Mule*: Heavy delivery utility truck.
+- **5-Star Wanted System**:
+  - Police patrol units respond dynamically to player crimes (car theft, reckless driving, hitting pedestrians, gunfire).
+  - Pursuit squad cars flank and attempt pit maneuvers.
+  - Breaking line-of-sight for 14 seconds clears active wanted stars.
+- **Story Missions & Syndicate Contracts**:
+  - *Mission 1 - First Wheels*: Commandeer a high-end sports car and deliver it to the Port chop shop (Reward: $500).
+  - *Mission 2 - Bay Courier*: High-speed timed cross-city contraband delivery across heavy traffic (Reward: $1,200).
+  - *Mission 3 - Heat Run*: Survive a citywide 3-star police dragnet and reach the safehouse garage (Reward: $3,000).
+- **Combat & World Pickups**:
+  - Melee punches with swoosh impact physics.
+  - Ranged gunplay with ammo management.
+  - Scattered health, ammo, and cash pickup crates.
+  - Rival cartel gang members defending warehouse docks.
+- **Heads-Up Display (HUD) & Radar**:
+  - Live rotating canvas minimap radar displaying city roads, player heading, traffic blips, police cruisers, and mission beacons.
+  - Speedometer readout, wanted star tracker, cash and health bars.
+- **Procedural WebAudio Synthesis**:
+  - Procedurally generated engine revs, multi-tone police sirens, gunshots, punches, and synthwave bassline soundtrack.
 
 ---
 
 ## Controls
 
-| Action | Key / Input |
-|---|---|
-| **Move / Steer** | `W`, `A`, `S`, `D` / Arrow Keys |
-| **Look / Orbit Camera** | Mouse Movement |
-| **Sprint** | `Shift` (Hold) |
-| **Enter / Exit Vehicle** | `E` |
-| **Handbrake / Drift** | `Space` |
-| **Melee Punch** | `F` |
-| **Shoot Pistol** | `Left Mouse Click` |
-| **Pause / Menu** | `P` / `Escape` |
-| **Mute / Unmute Audio** | `M` |
+| Action | Control |
+| :--- | :--- |
+| Move / Drive | `W`, `A`, `S`, `D` |
+| Camera Look / Aim | Mouse Orbit |
+| Sprint | `Shift` (hold) |
+| Enter / Exit Vehicle | `E` |
+| Melee Punch | `F` |
+| Shoot Weapon | `Left Mouse Button` |
+| Handbrake / Drift | `Space` |
+| Pause Game | `Esc` or `P` |
+| Mute Audio | `M` |
+## Playing Locally
 
----
-
-## Running Locally
-
-Requirements: Node.js 22+ (no build step, pure static ES modules).
+No complex build pipeline or bundle step is required. Serve the game locally with Node 22:
 
 ```bash
-# Start local static server
-node serve.ts --port 8080
+node serve.ts
 ```
 
-Open your browser and navigate to:
+Open your browser at `http://localhost:8080` to play.
+
+To test with custom port:
+```bash
+node serve.ts --port 8901
 ```
-http://localhost:8080
-```
 
----
+## Deterministic AI Benchmarking Screenshots
 
-## Deterministic Screenshots Mode
+The game supports deterministic scenario rendering for automated verification:
+- `?shot=start`: Title screen with Palma Verde coastal vista.
+- `?shot=drive`: High-speed cruise through city streets with speedometer and traffic.
+- `?shot=chase`: 3-star wanted level with sirens, police pursuit units, and radar tracking.
+- `?shot=mission`: Mission 2 delivery in progress with 3D waypoint beacon.
 
-The game includes URL-driven deterministic modes for testing and inspection:
-- `http://localhost:8080/?shot=start`: Title screen overlooking Palma Verde skyline.
-- `http://localhost:8080/?shot=drive`: High-speed cruise in the Vipera GT along Ocean Blvd.
-- `http://localhost:8080/?shot=chase`: 3-Star tactical pursuit with PVPD cruisers.
-- `http://localhost:8080/?shot=mission`: Mission 2 "Bay Courier" checkpoint race.
-
----
-
-## Packaging
+## Building Submission Output
 
 ```bash
 mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 ```
 
-Outputs the validated `game/`, `screenshots/`, and `dossier.json` to the target directory.
-
----
-
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
