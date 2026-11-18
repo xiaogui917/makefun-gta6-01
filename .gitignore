@@ -1,8 +1,9 @@
+# Ignored directories and artifacts
 out/
 .shot-tools/
 node_modules/
 .env
 *.keypair
-*.keypair.json
-*keypair*.json
-wallet.json
+*.json.keypair
+id_*.json
+makefun-keypair.json
