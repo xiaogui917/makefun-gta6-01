@@ -1,301 +1,259 @@
-// Neon Tide - Main Entrypoint & Game Loop
-// Palma Verde 3D Open World
-
+// Neon Tide - Main Game Controller, Lifecycle, Render Loop & Save State
 import * as THREE from 'three';
-import { CONFIG } from './config.js';
-import { InputManager } from './input.js';
+import { InputHandler } from './input.js';
 import { AudioManager } from './audio.js';
-import { World } from './world.js';
+import { WorldManager } from './world.js';
 import { Player } from './player.js';
 import { VehicleManager } from './vehicles.js';
 import { PedestrianManager } from './pedestrians.js';
 import { PoliceManager } from './police.js';
 import { MissionManager } from './missions.js';
 import { CombatManager } from './combat.js';
-import { HUDManager } from './hud.js';
-import { setupShotMode } from './shots.js';
+import { HUD } from './hud.js';
+import { setupDeterministicShot } from './shots.js';
+import { CAMERA_CONFIG, PLAYER_CONFIG } from './config.js';
 
-export class Game {
+export class NeonTideGame {
   constructor() {
-    this.state = 'START'; // START, PLAYING, PAUSED, BUSTED, WASTED
-    this.clock = new THREE.Clock();
+    this.container = document.getElementById('canvas-container');
+    this.isPaused = false;
+    this.isStarted = false;
+    this.lastTime = performance.now();
+    this.shotMode = null;
 
-    // Three.js Core
-    this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x7ec8f8);
-    this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
-    this.renderer = null;
+    this.initThree();
+    this.initSystems();
+    this.bindEvents();
+    this.checkURLParams();
 
-    // Subsystems
-    this.input = new InputManager();
-    this.audio = new AudioManager();
-    this.world = null;
-    this.player = null;
-    this.vehicles = null;
-    this.pedestrians = null;
-    this.police = null;
-    this.missions = null;
-    this.combat = null;
-    this.hud = null;
-
-    this.isShotMode = false;
+    if (!this.shotMode) {
+      this.animate = this.animate.bind(this);
+      requestAnimationFrame(this.animate);
+    }
   }
 
-  init() {
-    // Canvas & WebGL Renderer
-    const canvas = document.getElementById('game-canvas') || document.getElementById('game');
-    this.renderer = new THREE.WebGLRenderer({
-      canvas: canvas,
-      antialias: true,
-      powerPreference: 'high-performance',
-    });
+  initThree() {
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x87ceeb);
+
+    this.camera = new THREE.PerspectiveCamera(
+      CAMERA_CONFIG.FOV,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      1200
+    );
+    this.camera.position.set(-140, 6, 95);
+
+    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    // Initialize Subsystems
-    this.input.init(canvas);
-    this.world = new World(this.scene);
-    this.world.build();
+    this.container.appendChild(this.renderer.domElement);
+  }
+  initSystems() {
+    this.input = new InputHandler();
+    this.audio = new AudioManager();
+    this.hud = new HUD();
+    this.world = new WorldManager(this.scene);
+    this.player = new Player(this.scene, this.world);
+    this.vehicles = new VehicleManager(this.scene, this.world);
+    this.pedestrians = new PedestrianManager(this.scene, this.world);
+    this.police = new PoliceManager(this.scene, this.world, this.vehicles, this.audio);
+    this.missions = new MissionManager(this.scene, this.player, this.police, this.audio, this.hud);
+    this.combat = new CombatManager(this.scene, this.world, this.player, this.police, this.pedestrians, this.audio, this.hud);
+  }
 
-    this.player = new Player(this.scene, this.camera);
-    this.vehicles = new VehicleManager(this.scene, this.audio);
-    this.vehicles.init();
-
-    this.pedestrians = new PedestrianManager(this.scene, this.audio);
-    this.pedestrians.init(this.world);
-
-    this.police = new PoliceManager(this.scene, this.audio, this.vehicles);
-    this.missions = new MissionManager(this.scene, this.audio);
-    this.combat = new CombatManager(this.scene, this.audio);
-    this.combat.init(this.world);
-
-    this.hud = new HUDManager();
-    this.hud.init(
-      () => this.startNewGame(),
-      () => this.loadGame(),
-      () => this.resumeGame(),
-      () => this.saveGame(),
-      () => this.restartGame(),
-      () => this.toggleMute(),
-    );
-
-    window.__game = this;
-
-    // Window Resize Handler
+  bindEvents() {
     window.addEventListener('resize', () => {
       this.camera.aspect = window.innerWidth / window.innerHeight;
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // Check for Deterministic Screenshot Mode (?shot=start|drive|chase|mission)
-    const urlParams = new URLSearchParams(window.location.search);
-    const shotParam = urlParams.get('shot');
-
-    if (shotParam) {
-      this.isShotMode = true;
-      setupShotMode(shotParam, this);
-    } else {
-      // Normal game start
-      this.state = 'START';
-      this.camera.position.set(-180, 45, 120);
-      this.camera.lookAt(-20, 25, -20);
+    // Start screen buttons
+    const btnStart = document.getElementById('btn-start');
+    if (btnStart) {
+      btnStart.addEventListener('click', () => {
+        this.startNewGame();
+      });
     }
 
-    // Start Animation Loop
-    this.loop();
-  }
+    const btnContinue = document.getElementById('btn-continue');
+    if (btnContinue) {
+      btnContinue.addEventListener('click', () => {
+        this.loadSavedGame();
+        this.startNewGame(false);
+      });
+    }
 
-  startNewGame() {
-    this.audio.init();
-    this.audio.startMusic();
-    this.state = 'PLAYING';
-    this.player.position.set(0, 0.5, 0);
-    this.player.health = CONFIG.PLAYER.MAX_HEALTH;
-    this.player.cash = CONFIG.PLAYER.START_CASH;
-    this.missions.startMission(0); // Start Mission 1: First Wheels
-    this.input.requestPointerLock();
-  }
+    // Pause menu buttons
+    const btnResume = document.getElementById('btn-resume');
+    if (btnResume) {
+      btnResume.addEventListener('click', () => {
+        this.isPaused = false;
+        this.hud.togglePause(false);
+      });
+    }
 
-  resumeGame() {
-    this.state = 'PLAYING';
-    this.input.requestPointerLock();
-  }
+    const btnSave = document.getElementById('btn-save');
+    if (btnSave) {
+      btnSave.addEventListener('click', () => {
+        this.saveGameState();
+        this.hud.postMessage('Game Saved Successfully!');
+      });
+    }
 
-  pauseGame() {
-    this.state = 'PAUSED';
-    this.hud.pauseScreen.style.display = 'flex';
-    this.input.exitPointerLock();
+    const btnRestart = document.getElementById('btn-restart');
+    if (btnRestart) {
+      btnRestart.addEventListener('click', () => {
+        window.location.reload();
+      });
+    }
   }
-
-  restartGame() {
-    this.state = 'PLAYING';
-    this.player.respawn();
-    this.police.setWantedLevel(0);
-    this.missions.startMission(0);
-    this.input.requestPointerLock();
-  }
-
-  toggleMute() {
-    const isMuted = this.audio.toggleMute();
-    this.hud.showToast(isMuted ? 'Audio Muted' : 'Audio Enabled');
-  }
-
-  saveGame() {
-    const saveData = {
-      cash: this.player.cash,
-      health: this.player.health,
-      ammo: this.player.ammo,
-      completedCount: this.missions.completedCount,
-      missionIndex: this.missions.currentMissionIndex,
-      posX: this.player.position.x,
-      posZ: this.player.position.z,
-    };
+  saveGameState() {
     try {
-      localStorage.setItem('neontide_save', JSON.stringify(saveData));
+      const state = {
+        cash: this.player.cash,
+        health: this.player.health,
+        ammo: this.player.ammo,
+        missionIndex: this.missions.currentMissionIndex
+      };
+      localStorage.setItem('neontide_save_v1', JSON.stringify(state));
     } catch (_) {}
   }
 
-  loadGame() {
-    this.audio.init();
-    this.audio.startMusic();
+  loadSavedGame() {
     try {
-      const raw = localStorage.getItem('neontide_save');
+      const raw = localStorage.getItem('neontide_save_v1');
       if (raw) {
-        const data = JSON.parse(raw);
-        this.player.cash = data.cash || CONFIG.PLAYER.START_CASH;
-        this.player.health = data.health || CONFIG.PLAYER.MAX_HEALTH;
-        this.player.ammo = data.ammo || CONFIG.PLAYER.START_AMMO;
-        this.player.position.set(data.posX || 0, 0.5, data.posZ || 0);
-        this.missions.completedCount = data.completedCount || 0;
-        this.missions.startMission(data.missionIndex || 0);
-      } else {
-        this.startNewGame();
-        return;
-      }
-    } catch (_) {
-      this.startNewGame();
-      return;
-    }
-
-    this.state = 'PLAYING';
-    this.input.requestPointerLock();
-  }
-
-  handleBusted() {
-    this.state = 'BUSTED';
-    this.audio.stopSiren();
-    this.player.cash = Math.max(0, this.player.cash - CONFIG.WANTED.BUSTED_FEE);
-    this.input.exitPointerLock();
-
-    this.hud.showBusted(false, CONFIG.WANTED.BUSTED_FEE, () => {
-      this.player.respawn();
-      this.state = 'PLAYING';
-      this.input.requestPointerLock();
-    });
-  }
-
-  handleWasted() {
-    this.state = 'WASTED';
-    this.audio.stopSiren();
-    this.player.cash = Math.max(0, this.player.cash - CONFIG.WANTED.HOSPITAL_FEE);
-    this.input.exitPointerLock();
-
-    this.hud.showBusted(true, CONFIG.WANTED.HOSPITAL_FEE, () => {
-      this.player.respawn();
-      this.state = 'PLAYING';
-      this.input.requestPointerLock();
-    });
-  }
-
-  loop() {
-    requestAnimationFrame(() => this.loop());
-
-    const delta = this.clock.getDelta();
-    const dt = Math.min(delta, 0.05);
-    const elapsed = this.clock.getElapsedTime();
-
-    if (!this.isShotMode) {
-      // Toggle Pause
-      if (this.input.justPause()) {
-        if (this.state === 'PLAYING') this.pauseGame();
-        else if (this.state === 'PAUSED') this.resumeGame();
-      }
-
-      // Toggle Mute
-      if (this.input.justMute()) {
-        this.toggleMute();
-      }
-    }
-
-    if (this.state === 'PLAYING') {
-      // Update Subsystems
-      this.world.update(dt, elapsed);
-      this.player.update(dt, this.input, this.world, this.vehicles.vehicles);
-      this.vehicles.update(dt, this.input, this.world, this.player);
-      this.pedestrians.update(dt, this.player, this.vehicles, this.world, (crime) => {
-        this.police.reportCrime(crime);
-      });
-      this.police.update(
-        dt,
-        this.player,
-        this.world,
-        () => this.handleBusted(),
-        () => this.handleWasted(),
-      );
-      this.missions.update(dt, this.player, this.police, (mission) => {
-        this.hud.showMissionPassed(mission);
-        this.saveGame();
-      });
-      this.combat.update(
-        dt,
-        this.input,
-        this.player,
-        this.pedestrians,
-        this.police,
-        this.vehicles,
-        this.world,
-      );
-
-      // Check item pickups
-      for (const p of this.world.pickups) {
-        if (!p.active) continue;
-        if (Math.hypot(this.player.position.x - p.x, this.player.position.z - p.z) < 2.4) {
-          p.active = false;
-          p.group.visible = false;
-          p.respawnTimer = CONFIG.PICKUPS.RESPAWN_TIME;
-          this.audio.playPickup();
-
-          if (p.type === 'HEALTH') {
-            this.player.health = Math.min(CONFIG.PLAYER.MAX_HEALTH, this.player.health + p.value);
-            this.hud.showToast('+40 HP Health Picked Up');
-          } else if (p.type === 'AMMO') {
-            this.player.ammo = Math.min(CONFIG.PLAYER.MAX_AMMO, this.player.ammo + p.value);
-            this.hud.showToast('+30 Rounds Pistol Ammo');
-          } else if (p.type === 'CASH') {
-            this.player.cash += p.value;
-            this.hud.showToast(`+$${p.value} Cash Briefcase`);
-          }
+        const state = JSON.parse(raw);
+        if (state.cash != null) this.player.cash = state.cash;
+        if (state.ammo != null) this.player.ammo = state.ammo;
+        if (state.missionIndex != null) {
+          this.missions.currentMissionIndex = state.missionIndex;
         }
       }
+    } catch (_) {}
+  }
 
-      this.hud.update(dt, this.player, this.police, this.missions, this.world, this.vehicles);
-      this.input.update();
-    } else if (this.isShotMode) {
-      // In shot mode, keep world and HUD updated
-      this.world.update(dt, elapsed);
-      this.hud.update(dt, this.player, this.police, this.missions, this.world, this.vehicles);
+  startNewGame(startFresh = true) {
+    this.isStarted = true;
+    this.audio.ensureContext();
+    if (this.hud.startOverlay) this.hud.startOverlay.style.display = 'none';
+
+    if (startFresh) {
+      this.missions.startMission(0);
+    } else {
+      this.missions.startMission(this.missions.currentMissionIndex);
+    }
+  }
+
+  checkURLParams() {
+    const params = new URLSearchParams(window.location.search);
+    const shot = params.get('shot');
+    if (shot) {
+      this.shotMode = shot;
+      this.isStarted = true;
+      setupDeterministicShot(shot, this);
+      this.renderer.render(this.scene, this.camera);
+    }
+  }
+  animate(timestamp) {
+    requestAnimationFrame(this.animate);
+
+    const dt = Math.min((timestamp - this.lastTime) / 1000, 0.1);
+    this.lastTime = timestamp;
+
+    if (this.shotMode) return;
+
+    // Pause / Mute hotkeys
+    if (this.input.consumePress('Escape') || this.input.consumePress('KeyP')) {
+      this.isPaused = !this.isPaused;
+      this.hud.togglePause(this.isPaused);
+    }
+    if (this.input.consumePress('KeyM')) {
+      const isMuted = this.audio.toggleMute();
+      this.hud.postMessage(isMuted ? 'Audio Muted' : 'Audio Unmuted');
     }
 
-    // Render Scene
+    if (this.isPaused) return;
+
+    // Vehicle Enter / Exit
+    const nearestCar = this.vehicles.findNearestVehicle(this.player.position, PLAYER_CONFIG.ENTER_VEHICLE_RADIUS);
+    if (!this.player.isDriving && nearestCar) {
+      this.hud.showPrompt('Press [E] to Enter Vehicle');
+      if (this.input.consumePress('KeyE')) {
+        this.player.enterVehicle(nearestCar);
+        this.police.reportCrime('STEAL_CAR');
+        this.hud.postMessage(`Commandeered: ${nearestCar.config.name}`);
+        this.hud.showPrompt('');
+      }
+    } else if (this.player.isDriving) {
+      this.hud.showPrompt('Press [E] to Exit Vehicle');
+      if (this.input.consumePress('KeyE')) {
+        this.player.exitVehicle();
+        this.hud.showPrompt('');
+      }
+    } else {
+      this.hud.showPrompt('');
+    }
+
+    // World pickups collection
+    const collected = this.world.checkPickupCollect(this.player.position);
+    for (const type of collected) {
+      if (type === 'health') {
+        this.player.health = Math.min(PLAYER_CONFIG.MAX_HEALTH, this.player.health + 40);
+        this.audio.playPickup();
+        this.hud.postMessage('Health Restored (+40 HP)');
+      } else if (type === 'ammo') {
+        this.player.ammo += 30;
+        this.audio.playPickup();
+        this.hud.postMessage('Ammo Collected (+30 Rounds)');
+      } else if (type === 'cash') {
+        this.player.cash += 250;
+        this.audio.playPickup();
+        this.hud.postMessage('Found Cash (+$250)');
+      }
+    }
+
+    // Pedestrian vs vehicle hit checks
+    const pedsHit = this.pedestrians.checkVehicleCollisions(this.vehicles.vehicles);
+    if (pedsHit > 0) {
+      this.police.reportCrime('HIT_PEDESTRIAN');
+    }
+
+    // Update Systems
+    this.world.update(dt);
+    this.player.update(dt, this.input, this.camera);
+    this.vehicles.update(dt, this.input);
+    this.pedestrians.update(dt, this.player.position);
+    this.police.update(dt, this.player);
+    this.combat.update(dt, this.input, this.camera);
+    this.missions.update(dt);
+
+    // Audio Engine pitch
+    if (this.player.isDriving && this.player.currentVehicle) {
+      const spdNorm = Math.abs(this.player.currentVehicle.velocity) / this.player.currentVehicle.config.maxSpeed;
+      this.audio.setEnginePitchAndVolume(spdNorm, true);
+    } else {
+      this.audio.setEnginePitchAndVolume(0, false);
+    }
+
+    // Check Player Wasted / Hospital
+    if (this.player.health <= 0) {
+      this.hud.showWasted(false, () => {
+        this.player.respawnAtHospital();
+        this.police.clearWanted();
+      });
+    }
+
+    this.hud.update(this.player, this.police, this.vehicles, this.missions);
     this.renderer.render(this.scene, this.camera);
   }
 }
 
-// Bootstrap game when window loads
 window.addEventListener('DOMContentLoaded', () => {
-  const game = new Game();
-  game.init();
+  window.neonTide = new NeonTideGame();
 });

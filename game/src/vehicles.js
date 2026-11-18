@@ -1,413 +1,276 @@
-// Neon Tide - Vehicle Physics, 3D Models, and Traffic AI
-// Fictional fleet of Palma Verde
-
+// Neon Tide - 3D Vehicles, Car Physics, AI City Traffic & Stealing System
 import * as THREE from 'three';
-import { CONFIG } from './config.js';
+import { VEHICLE_CONFIG, WORLD_CONFIG } from './config.js';
 
-export class VehicleManager {
-  constructor(scene, audio) {
+export class Vehicle {
+  constructor(scene, world, configKey, x, z, rotation = 0) {
     this.scene = scene;
-    this.audio = audio;
-    this.vehicles = [];
+    this.world = world;
+    this.config = VEHICLE_CONFIG[configKey] || VEHICLE_CONFIG.SEDAN;
 
-    // Shared materials for performance
-    this.materials = {
-      glass: new THREE.MeshLambertMaterial({ color: 0x4a6b82, transparent: true, opacity: 0.85 }),
-      tire: new THREE.MeshLambertMaterial({ color: 0x333333 }),
-      rim: new THREE.MeshStandardMaterial({ color: 0xe0e0e0, metalness: 0.8, roughness: 0.2 }),
-      headlightOff: new THREE.MeshBasicMaterial({ color: 0xffffff }),
-      headlightOn: new THREE.MeshBasicMaterial({ color: 0xfff9c4 }),
-      taillightOff: new THREE.MeshBasicMaterial({ color: 0x8a2020 }),
-      taillightBrake: new THREE.MeshBasicMaterial({ color: 0xff1744 }),
-      policeRed: new THREE.MeshBasicMaterial({ color: 0xff1744 }),
-      policeBlue: new THREE.MeshBasicMaterial({ color: 0x00b0ff }),
-      policeWhite: new THREE.MeshLambertMaterial({ color: 0xffffff }),
-      policeBlack: new THREE.MeshLambertMaterial({ color: 0x2a2e34 }),
-      bumper: new THREE.MeshStandardMaterial({ color: 0x607d8b, metalness: 0.5, roughness: 0.5 }),
-      taxiSign: new THREE.MeshBasicMaterial({ color: 0xffea00 }),
-    };
+    this.position = new THREE.Vector3(x, 0, z);
+    this.velocity = 0;
+    this.steering = 0;
+    this.rotation = rotation;
+    this.isHandbraking = false;
+
+    this.driver = null; // Player or null / AI
+    this.isPolice = !!this.config.isPolice;
+    this.sirenActive = false;
+    this.sirenTimer = 0;
+
+    // AI navigation properties
+    this.isAI = true;
+    this.targetCoord = null;
+    this.currentRoadAxis = Math.random() > 0.5 ? 'X' : 'Z';
+    this.roadDirection = Math.random() > 0.5 ? 1 : -1;
+    this.aiSpeed = 12 + Math.random() * 8;
+
+    this.mesh = this.buildVehicleMesh();
+    this.scene.add(this.mesh);
+    this.updateMeshTransform();
   }
-
-  init() {
-    this.spawnParkedCars();
-    this.spawnTrafficCars();
-  }
-
-  createVehicle(typeKey, x, z, rotation = 0, isPolice = false) {
-    const preset = CONFIG.VEHICLES[typeKey.toUpperCase()] || CONFIG.VEHICLES.SEDAN;
+  buildVehicleMesh() {
     const group = new THREE.Group();
+    const { length, width, height, colors } = this.config;
+    const bodyColor = colors[Math.floor(Math.random() * colors.length)];
 
-    // Pick body color
-    let bodyColor = preset.colors[Math.floor(Math.random() * preset.colors.length)];
-    const bodyMat = isPolice
-      ? this.materials.policeBlack
-      : new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.35, metalness: 0.4 });
-
-    // Chassis dimensions
-    const isSport = preset.type === 'sport';
-    const isVan = preset.type === 'van';
-    const length = isSport ? 4.4 : isVan ? 5.2 : 4.6;
-    const width = isSport ? 2.1 : 2.0;
-    const height = isSport ? 0.9 : isVan ? 1.8 : 1.1;
-
-    // Main lower body
-    const bodyGeo = new THREE.BoxGeometry(width, height * 0.6, length);
-    const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
-    bodyMesh.position.y = height * 0.45;
-    bodyMesh.castShadow = true;
-    group.add(bodyMesh);
+    // Main Chassis
+    const bodyGeo = new THREE.BoxGeometry(width, height * 0.55, length);
+    const bodyMat = new THREE.MeshLambertMaterial({ color: bodyColor });
+    const body = new THREE.Mesh(bodyGeo, bodyMat);
+    body.position.y = height * 0.45;
+    body.castShadow = true;
+    group.add(body);
 
     // Cabin / Windows
-    const cabinH = isVan ? height * 0.65 : height * 0.55;
-    const cabinL = isSport ? length * 0.45 : isVan ? length * 0.75 : length * 0.52;
-    const cabinW = width * 0.88;
-    const cabinGeo = new THREE.BoxGeometry(cabinW, cabinH, cabinL);
-    const cabinMesh = new THREE.Mesh(cabinGeo, this.materials.glass);
-    const cabinZOffset = isSport ? -0.2 : isVan ? -0.2 : -0.1;
-    cabinMesh.position.set(0, height * 0.75 + cabinH * 0.4, cabinZOffset);
-    cabinMesh.castShadow = true;
-    group.add(cabinMesh);
+    const cabinGeo = new THREE.BoxGeometry(width * 0.85, height * 0.45, length * 0.55);
+    const glassMat = new THREE.MeshPhongMaterial({ color: 0x111622, specular: 0x00f0ff, shininess: 80 });
+    const cabin = new THREE.Mesh(cabinGeo, glassMat);
+    cabin.position.set(0, height * 0.85, -length * 0.05);
+    cabin.castShadow = true;
+    group.add(cabin);
 
-    // Police Cruiser White Doors
-    if (isPolice) {
-      const doorGeo = new THREE.BoxGeometry(width + 0.02, height * 0.5, length * 0.35);
-      const doorMesh = new THREE.Mesh(doorGeo, this.materials.policeWhite);
-      doorMesh.position.set(0, height * 0.45, -0.1);
-      group.add(doorMesh);
-
-      // Red/Blue strobe halves form the lightbar itself (a full-width
-      // blue bar here used to swallow them, so no strobe was ever visible)
-      const redHalf = new THREE.Mesh(new THREE.BoxGeometry(width * 0.3, 0.16, 0.3), this.materials.policeRed);
-      redHalf.position.set(-width * 0.16, height * 0.75 + cabinH + 0.12, cabinZOffset);
-      group.add(redHalf);
-
-      const blueHalf = new THREE.Mesh(new THREE.BoxGeometry(width * 0.3, 0.16, 0.3), this.materials.policeBlue);
-      blueHalf.position.set(width * 0.16, height * 0.75 + cabinH + 0.12, cabinZOffset);
-      group.add(blueHalf);
-
-      group.userData.redHalf = redHalf;
-      group.userData.blueHalf = blueHalf;
-    }
-
-    // Taxi Roof Sign
-    if (preset.type === 'taxi') {
-      const signGeo = new THREE.BoxGeometry(0.8, 0.22, 0.3);
-      const signMesh = new THREE.Mesh(signGeo, this.materials.taxiSign);
-      signMesh.position.set(0, height * 0.75 + cabinH + 0.12, cabinZOffset);
-      group.add(signMesh);
-    }
-
-    // Sport car rear wing
-    if (isSport) {
-      const wingGeo = new THREE.BoxGeometry(width * 0.95, 0.08, 0.45);
-      const wingMesh = new THREE.Mesh(wingGeo, bodyMat);
-      wingMesh.position.set(0, height * 0.85, -length * 0.42);
-      group.add(wingMesh);
-    }
+    // 4 Wheels
+    const wheelGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.28, 12);
+    const wheelMat = new THREE.MeshLambertMaterial({ color: 0x1a1a1a });
+    const wheelX = width * 0.52;
+    const wheelZ = length * 0.32;
+    [
+      [-wheelX, wheelZ], [wheelX, wheelZ],
+      [-wheelX, -wheelZ], [wheelX, -wheelZ]
+    ].forEach(([wx, wz]) => {
+      const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+      wheel.rotation.z = Math.PI / 2;
+      wheel.position.set(wx, 0.38, wz);
+      group.add(wheel);
+    });
 
     // Headlights
+    const hlMat = new THREE.MeshBasicMaterial({ color: 0xffffea });
     const hlGeo = new THREE.BoxGeometry(0.35, 0.18, 0.1);
-    const hlLeft = new THREE.Mesh(hlGeo, this.materials.headlightOn);
-    hlLeft.position.set(-width * 0.36, height * 0.45, length * 0.5 + 0.02);
-    group.add(hlLeft);
-
-    const hlRight = new THREE.Mesh(hlGeo, this.materials.headlightOn);
-    hlRight.position.set(width * 0.36, height * 0.45, length * 0.5 + 0.02);
-    group.add(hlRight);
+    const hlL = new THREE.Mesh(hlGeo, hlMat);
+    hlL.position.set(-width * 0.35, height * 0.48, length * 0.51);
+    const hlR = new THREE.Mesh(hlGeo, hlMat);
+    hlR.position.set(width * 0.35, height * 0.48, length * 0.51);
+    group.add(hlL);
+    group.add(hlR);
 
     // Taillights
-    const tlGeo = new THREE.BoxGeometry(0.35, 0.18, 0.1);
-    const tlLeft = new THREE.Mesh(tlGeo, this.materials.taillightOff);
-    tlLeft.position.set(-width * 0.36, height * 0.45, -length * 0.5 - 0.02);
-    group.add(tlLeft);
+    const tlMat = new THREE.MeshBasicMaterial({ color: 0xff0022 });
+    const tlL = new THREE.Mesh(hlGeo, tlMat);
+    tlL.position.set(-width * 0.35, height * 0.48, -length * 0.51);
+    const tlR = new THREE.Mesh(hlGeo, tlMat);
+    tlR.position.set(width * 0.35, height * 0.48, -length * 0.51);
+    group.add(tlL);
+    group.add(tlR);
 
-    const tlRight = new THREE.Mesh(tlGeo, this.materials.taillightOff);
-    tlRight.position.set(width * 0.36, height * 0.45, -length * 0.5 - 0.02);
-    group.add(tlRight);
+    // Props: Police Lightbar or Taxi Roof Sign
+    if (this.isPolice) {
+      this.sirenMeshL = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.15, 0.3), new THREE.MeshBasicMaterial({ color: 0xff0033 }));
+      this.sirenMeshL.position.set(-0.35, height * 1.15, -length * 0.05);
+      group.add(this.sirenMeshL);
 
-    // 4 Wheels with rims
-    const wheels = [];
-    const wheelR = 0.38;
-    const wheelW = 0.28;
-    const wheelGeo = new THREE.CylinderGeometry(wheelR, wheelR, wheelW, 14);
-    wheelGeo.rotateZ(Math.PI / 2);
-
-    const wheelPositions = [
-      { x: -width * 0.5, y: wheelR, z: length * 0.32, isFront: true },  // Front-left
-      { x: width * 0.5, y: wheelR, z: length * 0.32, isFront: true },   // Front-right
-      { x: -width * 0.5, y: wheelR, z: -length * 0.32, isFront: false },// Rear-left
-      { x: width * 0.5, y: wheelR, z: -length * 0.32, isFront: false }, // Rear-right
-    ];
-
-    for (const wp of wheelPositions) {
-      const wheelHolder = new THREE.Group();
-      wheelHolder.position.set(wp.x, wp.y, wp.z);
-
-      const wheelMesh = new THREE.Mesh(wheelGeo, this.materials.tire);
-      wheelMesh.castShadow = true;
-      wheelHolder.add(wheelMesh);
-
-      // Chrome rim hubcap
-      const rimGeo = new THREE.CylinderGeometry(wheelR * 0.6, wheelR * 0.6, wheelW + 0.02, 8);
-      rimGeo.rotateZ(Math.PI / 2);
-      const rimMesh = new THREE.Mesh(rimGeo, this.materials.rim);
-      wheelHolder.add(rimMesh);
-
-      group.add(wheelHolder);
-      wheels.push({
-        holder: wheelHolder,
-        mesh: wheelMesh,
-        isFront: wp.isFront,
-      });
+      this.sirenMeshR = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.15, 0.3), new THREE.MeshBasicMaterial({ color: 0x0044ff }));
+      this.sirenMeshR.position.set(0.35, height * 1.15, -length * 0.05);
+      group.add(this.sirenMeshR);
+    } else if (this.config.type === 'taxi') {
+      const taxiSign = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.18, 0.3), new THREE.MeshBasicMaterial({ color: 0xfff099 }));
+      taxiSign.position.set(0, height * 1.15, -length * 0.05);
+      group.add(taxiSign);
     }
 
-    group.position.set(x, 0, z);
-    group.rotation.y = rotation;
-    this.scene.add(group);
-
-    const vehicle = {
-      preset,
-      group,
-      wheels,
-      bodyMat,
-      tlLeft,
-      tlRight,
-      position: group.position,
-      rotation: rotation,
-      speed: 0,
-      steeringAngle: 0,
-      angularVelocity: 0,
-      health: preset.health,
-      maxHealth: preset.health,
-      isDrivenByPlayer: false,
-      isPolice: isPolice,
-      isParked: false,
-      isWrecked: false,
-      radius: length * 0.45,
-      length: length,
-      width: width,
-      sirenActive: false,
-      strobeTimer: 0,
-
-      // Traffic AI state
-      trafficTarget: null,
-      trafficWaypoints: [],
-      waypointIndex: 0,
-    };
-
-    this.vehicles.push(vehicle);
-    return vehicle;
+    return group;
   }
-
-  spawnParkedCars() {
-    // Parked cars stationed at curbs & mission locations
-    const parkedSpots = [
-      { type: 'sport', x: -30, z: -40, rot: Math.PI / 2 },   // Mission 1 target Vipera GT
-      { type: 'sedan', x: -80, z: 60, rot: 0 },
-      { type: 'sport', x: -210, z: 20, rot: -Math.PI / 2 },  // Coastal sports car
-      { type: 'taxi', x: 20, z: -80, rot: Math.PI },
-      { type: 'van', x: 190, z: 80, rot: 0 },               // Harbor van
-      { type: 'sedan', x: 110, z: -140, rot: Math.PI / 2 },
-      { type: 'sport', x: -160, z: -160, rot: 0 },
-    ];
-
-    for (const spot of parkedSpots) {
-      const v = this.createVehicle(spot.type, spot.x, spot.z, spot.rot, false);
-      v.isParked = true;
+  update(dt, input, allVehicles) {
+    if (this.driver) {
+      this.isAI = false;
+      this.updatePlayerDriving(dt, input);
+    } else if (this.isAI) {
+      this.updateAITraffic(dt, allVehicles);
     }
+
+    // World collision
+    const col = this.world.checkCollision(this.position.x, this.position.z, this.config.width * 0.7);
+    if (col) {
+      this.velocity *= -0.4;
+      this.position.x += Math.sin(this.rotation) * this.velocity * dt * 2;
+      this.position.z += Math.cos(this.rotation) * this.velocity * dt * 2;
+    }
+
+    // Police flashing lights
+    if (this.isPolice && this.sirenActive) {
+      this.sirenTimer += dt * 8;
+      const flash = Math.sin(this.sirenTimer) > 0;
+      if (this.sirenMeshL) this.sirenMeshL.material.color.setHex(flash ? 0xff0000 : 0x220000);
+      if (this.sirenMeshR) this.sirenMeshR.material.color.setHex(flash ? 0x000022 : 0x0044ff);
+    }
+
+    this.updateMeshTransform();
   }
 
-  spawnTrafficCars() {
-    // Spawn civilian traffic cruising on road corridors
-    const { GRID_BLOCKS_X, GRID_BLOCKS_Z, BLOCK_SIZE, ROAD_WIDTH } = CONFIG.WORLD;
-    const pitch = BLOCK_SIZE + ROAD_WIDTH;
-    const types = ['sedan', 'taxi', 'van', 'sport'];
+  updatePlayerDriving(dt, input) {
+    const { accel, brake, maxSpeed, turnSpeed } = this.config;
+    this.isHandbraking = input.isDown('Space');
 
-    for (let i = 0; i < CONFIG.TRAFFIC.COUNT; i++) {
-      const isVertical = i % 2 === 0;
-      const lane = (i % 2 === 0 ? 1 : -1) * CONFIG.TRAFFIC.LANE_OFFSET;
-
-      let x, z, rot;
-      if (isVertical) {
-        const roadIdx = (i % (GRID_BLOCKS_X + 1));
-        x = -((GRID_BLOCKS_X * pitch) / 2) + roadIdx * pitch + lane;
-        z = ((i * 37) % 360) - 180;
-        rot = lane > 0 ? 0 : Math.PI;
+    // Acceleration & Reverse
+    if (input.isDown('KeyW')) {
+      this.velocity = Math.min(maxSpeed, this.velocity + accel * dt);
+    } else if (input.isDown('KeyS')) {
+      if (this.velocity > 1) {
+        this.velocity = Math.max(0, this.velocity - brake * dt * 1.5); // brake
       } else {
-        const roadIdx = (i % (GRID_BLOCKS_Z + 1));
-        z = -((GRID_BLOCKS_Z * pitch) / 2) + roadIdx * pitch + lane;
-        x = ((i * 43) % 360) - 180;
-        rot = lane > 0 ? Math.PI / 2 : -Math.PI / 2;
-      }
-
-      const type = types[i % types.length];
-      const v = this.createVehicle(type, x, z, rot, false);
-      v.speed = CONFIG.TRAFFIC.CRUISE_SPEED * (0.8 + Math.random() * 0.4);
-    }
-  }
-
-  update(dt, input, world, player) {
-    let playerVehicleSoundActive = false;
-
-    for (const v of this.vehicles) {
-      if (v.isWrecked) continue;
-
-      if (v.isDrivenByPlayer) {
-        this.updatePlayerDriver(v, dt, input, world);
-        playerVehicleSoundActive = true;
-      } else if (!v.isParked) {
-        this.updateTrafficAI(v, dt, world, player);
-      }
-
-      // Wheels animation
-      const wheelSpin = (v.speed / 0.38) * dt;
-      for (const w of v.wheels) {
-        w.mesh.rotation.x += wheelSpin;
-        if (w.isFront) {
-          w.holder.rotation.y = v.steeringAngle;
-        }
-      }
-
-      // Police Strobe Flash
-      if (v.isPolice && (v.sirenActive || v.group.userData.redHalf)) {
-        v.strobeTimer += dt * 10;
-        const flash = Math.sin(v.strobeTimer) > 0;
-        if (v.group.userData.redHalf) {
-          v.group.userData.redHalf.visible = flash;
-          v.group.userData.blueHalf.visible = !flash;
-        }
-      }
-
-      // Sync 3D group transform
-      v.group.position.copy(v.position);
-      v.group.rotation.y = v.rotation;
-    }
-
-    // Engine Audio update
-    if (player.inVehicle && player.currentVehicle) {
-      const v = player.currentVehicle;
-      const speedRatio = Math.min(Math.abs(v.speed) / v.preset.topSpeed, 1.0);
-      const isAccel = input.isForward() || input.isBackward();
-      this.audio.updateEngine(speedRatio, isAccel);
-    } else if (!player.inVehicle) {
-      this.audio.stopEngine();
-    }
-  }
-
-  updatePlayerDriver(v, dt, input, world) {
-    const preset = v.preset;
-    const isHandbrake = input.isHandbrake();
-
-    // Throttle / Accel & Brake
-    if (input.isForward()) {
-      v.speed = Math.min(preset.topSpeed, v.speed + preset.accel * dt);
-      v.tlLeft.material = this.materials.taillightOff;
-      v.tlRight.material = this.materials.taillightOff;
-    } else if (input.isBackward()) {
-      if (v.speed > 1.0) {
-        // Foot brake
-        v.speed = Math.max(0, v.speed - preset.brake * dt);
-        v.tlLeft.material = this.materials.taillightBrake;
-        v.tlRight.material = this.materials.taillightBrake;
-      } else {
-        // Reverse
-        v.speed = Math.max(-preset.reverseSpeed, v.speed - preset.accel * 0.7 * dt);
+        this.velocity = Math.max(-maxSpeed * 0.45, this.velocity - accel * 0.7 * dt); // reverse
       }
     } else {
       // Natural rolling friction
-      if (v.speed > 0) v.speed = Math.max(0, v.speed - 6.5 * dt);
-      else if (v.speed < 0) v.speed = Math.min(0, v.speed + 6.5 * dt);
-      v.tlLeft.material = this.materials.taillightOff;
-      v.tlRight.material = this.materials.taillightOff;
+      this.velocity *= Math.pow(0.88, dt * 10);
+      if (Math.abs(this.velocity) < 0.2) this.velocity = 0;
     }
 
-    // Handbrake
-    if (isHandbrake) {
-      v.speed = THREE.MathUtils.lerp(v.speed, 0, dt * 2.8);
-      v.tlLeft.material = this.materials.taillightBrake;
-      v.tlRight.material = this.materials.taillightBrake;
+    if (this.isHandbraking) {
+      this.velocity *= Math.pow(0.55, dt * 10);
     }
 
     // Steering
-    const targetSteer = input.isLeft() ? 0.55 : input.isRight() ? -0.55 : 0;
-    v.steeringAngle = THREE.MathUtils.lerp(v.steeringAngle, targetSteer, dt * 10);
+    let steerInput = 0;
+    if (input.isDown('KeyA')) steerInput += 1;
+    if (input.isDown('KeyD')) steerInput -= 1;
 
-    // Apply rotation based on speed and steering angle
-    if (Math.abs(v.speed) > 0.1) {
-      const turnMultiplier = isHandbrake ? preset.handbrakeDrift : 1.0;
-      const turnDir = v.speed >= 0 ? 1 : -1;
-      v.rotation += v.steeringAngle * preset.steerSpeed * turnMultiplier * (v.speed / preset.topSpeed) * dt * turnDir;
+    if (Math.abs(this.velocity) > 0.5) {
+      const dir = this.velocity >= 0 ? 1 : -1;
+      const turnMultiplier = this.isHandbraking ? 1.6 : 1.0;
+      this.rotation += steerInput * turnSpeed * turnMultiplier * dt * dir * (Math.abs(this.velocity) / maxSpeed);
     }
 
-    // Move forward in vehicle heading
-    const moveDist = v.speed * dt;
-    const forwardX = Math.sin(v.rotation);
-    const forwardZ = Math.cos(v.rotation);
-
-    const nextX = v.position.x + forwardX * moveDist;
-    const nextZ = v.position.z + forwardZ * moveDist;
-
-    // Check world building collisions
-    const col = world.checkCollision(nextX, nextZ, v.radius);
-    if (col) {
-      // Bounce and collision damage
-      v.speed = -v.speed * 0.35;
-      v.health -= Math.abs(v.speed) * 0.8;
-      this.audio.playCrash();
-    } else {
-      v.position.x = nextX;
-      v.position.z = nextZ;
-    }
-
-    // Vehicle boundary clamp
-    v.position.x = Math.max(-280, Math.min(280, v.position.x));
-    v.position.z = Math.max(-280, Math.min(280, v.position.z));
+    // Move forward in facing direction
+    this.position.x += Math.sin(this.rotation) * this.velocity * dt;
+    this.position.z += Math.cos(this.rotation) * this.velocity * dt;
   }
-
-  updateTrafficAI(v, dt, world, player) {
-    // Traffic moves straight along current heading
-    const moveDist = v.speed * dt;
-    const forwardX = Math.sin(v.rotation);
-    const forwardZ = Math.cos(v.rotation);
-
-    const nextX = v.position.x + forwardX * moveDist;
-    const nextZ = v.position.z + forwardZ * moveDist;
-
-    // If approaching city border, wrap around or turn
-    if (Math.abs(nextX) > 270 || Math.abs(nextZ) > 270) {
-      v.rotation += Math.PI;
-      return;
-    }
-
-    // Check collision with buildings
-    if (world.checkCollision(nextX, nextZ, v.radius)) {
-      v.rotation += Math.PI / 2;
-      return;
-    }
-
-    // Simple forward vehicle yield (avoid crashing into car ahead)
-    let shouldYield = false;
-    for (const other of this.vehicles) {
-      if (other === v) continue;
-      const dist = v.position.distanceTo(other.position);
-      if (dist < CONFIG.TRAFFIC.FOLLOW_DISTANCE) {
-        // Dot product to check if other is ahead
-        const toOtherX = other.position.x - v.position.x;
-        const toOtherZ = other.position.z - v.position.z;
-        const ahead = toOtherX * forwardX + toOtherZ * forwardZ;
-        if (ahead > 0) {
-          shouldYield = true;
+  updateAITraffic(dt, allVehicles) {
+    // Check for vehicle ahead to brake
+    let blocked = false;
+    for (const other of allVehicles) {
+      if (other === this) continue;
+      const dist = this.position.distanceTo(other.position);
+      if (dist < 8.0) {
+        const toOther = new THREE.Vector3().subVectors(other.position, this.position);
+        const forward = new THREE.Vector3(Math.sin(this.rotation), 0, Math.cos(this.rotation));
+        if (forward.dot(toOther.normalize()) > 0.65) {
+          blocked = true;
           break;
         }
       }
     }
 
-    if (shouldYield) {
-      v.speed = Math.max(0, v.speed - 12 * dt);
+    if (blocked) {
+      this.velocity = Math.max(0, this.velocity - 22 * dt);
     } else {
-      v.speed = Math.min(CONFIG.TRAFFIC.CRUISE_SPEED, v.speed + 6 * dt);
-      v.position.x = nextX;
-      v.position.z = nextZ;
+      this.velocity = Math.min(this.aiSpeed, this.velocity + 12 * dt);
+    }
+
+    // Drive in straight line along current road
+    this.position.x += Math.sin(this.rotation) * this.velocity * dt;
+    this.position.z += Math.cos(this.rotation) * this.velocity * dt;
+
+    // Turn at boundaries or random intersections
+    const half = WORLD_CONFIG.CITY_SIZE / 2 - 25;
+    if (Math.abs(this.position.x) > half || Math.abs(this.position.z) > half) {
+      this.rotation += Math.PI;
+      this.position.x = Math.max(-half, Math.min(half, this.position.x));
+      this.position.z = Math.max(-half, Math.min(half, this.position.z));
+    }
+  }
+
+  updateMeshTransform() {
+    this.mesh.position.copy(this.position);
+    this.mesh.rotation.y = this.rotation;
+  }
+
+  getSpeedMPH() {
+    return Math.round(Math.abs(this.velocity) * 2.236);
+  }
+}
+export class VehicleManager {
+  constructor(scene, world) {
+    this.scene = scene;
+    this.world = world;
+    this.vehicles = [];
+
+    this.spawnInitialFleet();
+  }
+
+  spawnInitialFleet() {
+    const keys = ['SPORTS', 'SEDAN', 'TAXI', 'TRUCK', 'POLICE'];
+    const roadsX = this.world.roadCoordsX || [-200, -100, 0, 100, 200];
+    const roadsZ = this.world.roadCoordsZ || [-200, -100, 0, 100, 200];
+
+    // Spawn 18 ambient traffic cars along road lanes
+    for (let i = 0; i < 18; i++) {
+      const k = keys[i % keys.length];
+      const isXRoad = i % 2 === 0;
+      const roadCoord = (isXRoad ? roadsZ : roadsX)[i % roadsZ.length];
+      const laneOffset = i % 4 < 2 ? 4.5 : -4.5;
+      const along = (Math.random() * 2 - 1) * (WORLD_CONFIG.CITY_SIZE / 2 - 40);
+
+      const x = isXRoad ? along : roadCoord + laneOffset;
+      const z = isXRoad ? roadCoord + laneOffset : along;
+      const rot = isXRoad ? (laneOffset > 0 ? Math.PI / 2 : -Math.PI / 2) : (laneOffset > 0 ? 0 : Math.PI);
+
+      const v = new Vehicle(this.scene, this.world, k, x, z, rot);
+      this.vehicles.push(v);
+    }
+
+    // Spawn 4 parked stealable sports cars outside hotels
+    const sportsParked = [
+      { x: -140, z: 70, rot: 0 },
+      { x: -140, z: -50, rot: Math.PI / 2 },
+      { x: 30, z: 95, rot: 0 },
+      { x: 80, z: -110, rot: Math.PI }
+    ];
+    sportsParked.forEach(p => {
+      const v = new Vehicle(this.scene, this.world, 'SPORTS', p.x, p.z, p.rot);
+      v.isAI = false;
+      this.vehicles.push(v);
+    });
+  }
+
+  findNearestVehicle(pos, maxDist = 4.0) {
+    let nearest = null;
+    let minDist = maxDist;
+    for (const v of this.vehicles) {
+      const d = pos.distanceTo(v.position);
+      if (d < minDist) {
+        minDist = d;
+        nearest = v;
+      }
+    }
+    return nearest;
+  }
+
+  update(dt, input) {
+    for (const v of this.vehicles) {
+      v.update(dt, input, this.vehicles);
     }
   }
 }

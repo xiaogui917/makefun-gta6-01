@@ -1,227 +1,214 @@
-// Neon Tide - Story Campaign & Mission Manager
-// Storyline of Dante Rios in Palma Verde
-
+// Neon Tide - Story Missions, Objectives, Waypoints & Progression System
 import * as THREE from 'three';
-import { CONFIG } from './config.js';
+import { ECONOMY_CONFIG } from './config.js';
 
+export const MISSIONS_DATA = [
+  {
+    id: 1,
+    title: 'First Wheels',
+    subtitle: 'Steal & Deliver',
+    intro: 'Welcome to Palma Verde. Boost a sports car parked on Ocean Drive and deliver it to the Port chop shop.',
+    reward: ECONOMY_CONFIG.MISSION_REWARDS[0],
+    steps: [
+      { text: 'Steal a sports car from Oceanfront', target: new THREE.Vector3(-140, 0, 70), radius: 5.0, requiresVehicle: 'sports' },
+      { text: 'Deliver the sports car to the Port chop shop', target: new THREE.Vector3(120, 0, -110), radius: 6.0, inVehicle: true }
+    ]
+  },
+  {
+    id: 2,
+    title: 'Bay Courier',
+    subtitle: 'Timed Express Delivery',
+    intro: 'Priority package at the Port. Pick it up and race cross-city to the Downtown high-rise before time runs out!',
+    reward: ECONOMY_CONFIG.MISSION_REWARDS[1],
+    timeLimit: 90,
+    steps: [
+      { text: 'Pick up the package at Port Warehouse', target: new THREE.Vector3(100, 0, -140), radius: 4.5 },
+      { text: 'Deliver the package to Downtown High-rise', target: new THREE.Vector3(-30, 0, 120), radius: 6.0 }
+    ]
+  },
+  {
+    id: 3,
+    title: 'Heat Run',
+    subtitle: 'High-Speed Syndicate Evasion',
+    intro: 'The precinct set up a citywide dragnet! Survive 3-Star wanted heat and reach the safehouse garage!',
+    reward: ECONOMY_CONFIG.MISSION_REWARDS[2],
+    triggerWanted: 3,
+    steps: [
+      { text: 'Evade police dragnet and reach Safehouse', target: new THREE.Vector3(140, 0, 130), radius: 6.5 }
+    ]
+  }
+];
 export class MissionManager {
-  constructor(scene, audio) {
+  constructor(scene, player, policeManager, audio, hud) {
     this.scene = scene;
+    this.player = player;
+    this.police = policeManager;
     this.audio = audio;
+    this.hud = hud;
 
-    this.currentMissionIndex = 0;
-    this.activeMission = null;
-    this.missionState = 'IDLE'; // IDLE, ACTIVE, PASSED, FAILED
-    this.stepIndex = 0;
-    this.timer = 0;
-    this.completedCount = 0;
+    this.currentMissionIndex = 0; // 0, 1, 2
+    this.currentStepIndex = 0;
+    this.missionActive = false;
+    this.timerRemaining = 0;
 
-    // Visual 3D Waypoint Beacon
-    this.waypointMesh = this.createWaypointMarker();
-    this.scene.add(this.waypointMesh);
-    this.waypointMesh.visible = false;
+    this.beaconMesh = this.createBeaconMesh();
+    this.scene.add(this.beaconMesh);
+    this.beaconMesh.visible = false;
   }
 
-  createWaypointMarker() {
+  createBeaconMesh() {
     const group = new THREE.Group();
 
-    // High vertical neon beam of light
-    const beamGeo = new THREE.CylinderGeometry(2.5, 2.5, 60, 16, 1, true);
+    // Vertical cylinder light column
+    const beamGeo = new THREE.CylinderGeometry(1.8, 1.8, 45, 16, 1, true);
     const beamMat = new THREE.MeshBasicMaterial({
-      color: 0x00e5ff,
+      color: 0xff0077,
       transparent: true,
-      opacity: 0.65,
-      side: THREE.DoubleSide,
+      opacity: 0.45,
+      side: THREE.DoubleSide
     });
     const beam = new THREE.Mesh(beamGeo, beamMat);
-    beam.position.y = 30;
+    beam.position.y = 22.5;
     group.add(beam);
 
-    // Bright inner core beam
-    const coreGeo = new THREE.CylinderGeometry(0.8, 0.8, 60, 12, 1, true);
-    const coreMat = new THREE.MeshBasicMaterial({
-      color: 0xe0ffff,
-      transparent: true,
-      opacity: 0.85,
-      side: THREE.DoubleSide,
-    });
-    const core = new THREE.Mesh(coreGeo, coreMat);
-    core.position.y = 30;
-    group.add(core);
+    // Floating diamond marker
+    const markerGeo = new THREE.OctahedronGeometry(1.4, 0);
+    const markerMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
+    this.diamond = new THREE.Mesh(markerGeo, markerMat);
+    this.diamond.position.y = 2.5;
+    group.add(this.diamond);
 
-    // Glowing ground ring
-    const ringGeo = new THREE.RingGeometry(2.0, 4.2, 24);
-    ringGeo.rotateX(-Math.PI / 2);
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: 0xffd600,
-      side: THREE.DoubleSide,
-    });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
-    ring.position.y = 0.15;
-    group.add(ring);
-
-    group.userData = { beam, core, ring };
     return group;
   }
 
   startMission(index) {
-    if (index >= CONFIG.MISSIONS.length) return false;
-
+    if (index >= MISSIONS_DATA.length) return;
     this.currentMissionIndex = index;
-    this.activeMission = CONFIG.MISSIONS[index];
-    this.missionState = 'ACTIVE';
-    this.stepIndex = 0;
-    this.timer = this.activeMission.timeLimit || 0;
+    this.currentStepIndex = 0;
+    this.missionActive = true;
 
-    this.updateWaypointPosition();
-    return true;
+    const data = MISSIONS_DATA[index];
+    this.timerRemaining = data.timeLimit || 0;
+
+    if (data.triggerWanted && this.police) {
+      this.police.setWantedLevel(data.triggerWanted);
+    }
+
+    this.updateBeaconPosition();
+    if (this.hud) {
+      this.hud.showMission(data.title, data.steps[0].text, this.timerRemaining);
+      this.hud.postMessage(`MISSION STARTED: ${data.title}`);
+    }
   }
-
-  update(dt, player, police, onMissionPassed) {
-    if (this.missionState !== 'ACTIVE' || !this.activeMission) {
-      this.waypointMesh.visible = false;
+  updateBeaconPosition() {
+    const data = MISSIONS_DATA[this.currentMissionIndex];
+    if (!data || !this.missionActive) {
+      this.beaconMesh.visible = false;
       return;
     }
-
-    // Animate waypoint beacon rotation & pulse
-    this.waypointMesh.visible = true;
-    this.waypointMesh.rotation.y += dt * 1.5;
-    const pulse = 1.0 + Math.sin(Date.now() * 0.005) * 0.15;
-    this.waypointMesh.scale.set(pulse, 1.0, pulse);
-
-    // Handle Mission-specific objectives
-    const missionId = this.activeMission.id;
-
-    if (missionId === 'm1_first_wheels') {
-      this.updateMission1(dt, player, onMissionPassed);
-    } else if (missionId === 'm2_bay_courier') {
-      this.updateMission2(dt, player, onMissionPassed);
-    } else if (missionId === 'm3_heat_run') {
-      this.updateMission3(dt, player, police, onMissionPassed);
+    const step = data.steps[this.currentStepIndex];
+    if (step && step.target) {
+      this.beaconMesh.position.set(step.target.x, 0, step.target.z);
+      this.beaconMesh.visible = true;
+    } else {
+      this.beaconMesh.visible = false;
     }
   }
 
-  updateMission1(dt, player, onMissionPassed) {
-    // Step 0: Find & Enter sports car
-    if (this.stepIndex === 0) {
-      if (player.inVehicle && player.currentVehicle && player.currentVehicle.preset.type === 'sport') {
-        this.stepIndex = 1;
-        this.updateWaypointPosition();
-      }
-    } else if (this.stepIndex === 1) {
-      // Step 1: Deliver car to Harbor Garage drop point
-      const target = this.activeMission.dropPoint;
-      const dist = Math.hypot(player.position.x - target.x, player.position.z - target.z);
-
-      if (dist < this.activeMission.tolerance && player.inVehicle) {
-        this.completeCurrentMission(player, onMissionPassed);
-      }
-    }
+  getActiveTarget() {
+    if (!this.missionActive) return null;
+    const data = MISSIONS_DATA[this.currentMissionIndex];
+    if (!data) return null;
+    const step = data.steps[this.currentStepIndex];
+    return step ? step.target : null;
   }
 
-  updateMission2(dt, player, onMissionPassed) {
-    // Timed checkpoints delivery
-    this.timer -= dt;
-    if (this.timer <= 0) {
-      this.missionState = 'FAILED';
-      this.waypointMesh.visible = false;
-      return;
+  completeMission() {
+    const data = MISSIONS_DATA[this.currentMissionIndex];
+    this.player.cash += data.reward;
+    this.missionActive = false;
+    this.beaconMesh.visible = false;
+
+    if (this.audio) this.audio.playMissionComplete();
+    if (this.hud) {
+      this.hud.showMission('MISSION COMPLETE!', `Earned $${data.reward}`, 0);
+      this.hud.postMessage(`MISSION COMPLETE: +$${data.reward}`);
     }
 
-    const checkpoints = this.activeMission.checkpoints;
-    const currentCp = checkpoints[this.stepIndex];
-    const dist = Math.hypot(player.position.x - currentCp.x, player.position.z - currentCp.z);
+    if (this.police && data.triggerWanted) {
+      this.police.clearWanted();
+    }
 
-    if (dist < this.activeMission.tolerance) {
-      this.stepIndex++;
-      this.audio.playPickup();
-
-      if (this.stepIndex >= checkpoints.length) {
-        this.completeCurrentMission(player, onMissionPassed);
+    // Auto-advance to next mission after 4s
+    setTimeout(() => {
+      if (this.currentMissionIndex + 1 < MISSIONS_DATA.length) {
+        this.startMission(this.currentMissionIndex + 1);
       } else {
-        this.updateWaypointPosition();
+        if (this.hud) {
+          this.hud.showMission('ALL MISSIONS COMPLETED', 'Palma Verde is yours!', 0);
+          this.hud.postMessage('VICTORY: Palma Verde Underworld Conquered!');
+        }
+      }
+    }, 4000);
+  }
+  failMission(reason = 'Mission Failed!') {
+    this.missionActive = false;
+    this.beaconMesh.visible = false;
+    if (this.hud) {
+      this.hud.showMission('MISSION FAILED', reason, 0);
+      this.hud.postMessage(`FAILED: ${reason}`);
+    }
+  }
+
+  update(dt) {
+    if (!this.missionActive) return;
+
+    // Animate beacon diamond
+    if (this.diamond) {
+      this.diamond.rotation.y += dt * 2.2;
+      this.diamond.rotation.x += dt * 1.1;
+    }
+
+    const data = MISSIONS_DATA[this.currentMissionIndex];
+    if (!data) return;
+
+    // Countdown timer if applicable
+    if (this.timerRemaining > 0) {
+      this.timerRemaining -= dt;
+      if (this.hud) this.hud.updateTimer(this.timerRemaining);
+      if (this.timerRemaining <= 0) {
+        this.failMission('Time Expired!');
+        return;
       }
     }
-  }
 
-  updateMission3(dt, player, police, onMissionPassed) {
-    // Heat run: Start with 3 stars wanted
-    if (this.stepIndex === 0) {
-      police.setWantedLevel(3);
-      this.stepIndex = 1;
-      this.updateWaypointPosition();
-    }
+    // Check step condition
+    const step = data.steps[this.currentStepIndex];
+    if (!step) return;
 
-    const safehouse = this.activeMission.safehousePoint;
-    const dist = Math.hypot(player.position.x - safehouse.x, player.position.z - safehouse.z);
+    // Proximity check to step target
+    const dist = this.player.position.distanceTo(step.target);
+    if (dist < step.radius) {
+      if (step.requiresVehicle && (!this.player.isDriving || this.player.currentVehicle.config.type !== step.requiresVehicle)) {
+        // Needs specific vehicle
+        return;
+      }
+      if (step.inVehicle && !this.player.isDriving) {
+        return;
+      }
 
-    if (dist < this.activeMission.tolerance) {
-      police.setWantedLevel(0);
-      this.completeCurrentMission(player, onMissionPassed);
-    }
-  }
-
-  completeCurrentMission(player, onMissionPassed) {
-    this.missionState = 'PASSED';
-    this.waypointMesh.visible = false;
-    this.completedCount = Math.max(this.completedCount, this.currentMissionIndex + 1);
-
-    const reward = this.activeMission.reward;
-    player.cash += reward;
-    this.audio.playMissionSuccess();
-
-    if (onMissionPassed) {
-      onMissionPassed(this.activeMission);
-    }
-  }
-
-  updateWaypointPosition() {
-    if (!this.activeMission) return;
-
-    let target = { x: 0, z: 0 };
-    if (this.activeMission.id === 'm1_first_wheels') {
-      target = this.stepIndex === 0 ? this.activeMission.startPoint : this.activeMission.dropPoint;
-    } else if (this.activeMission.id === 'm2_bay_courier') {
-      target = this.activeMission.checkpoints[this.stepIndex] || { x: 0, z: 0 };
-    } else if (this.activeMission.id === 'm3_heat_run') {
-      target = this.activeMission.safehousePoint;
-    }
-
-    this.waypointMesh.position.set(target.x, 0, target.z);
-  }
-
-  getCurrentObjectiveText(player) {
-    if (this.missionState !== 'ACTIVE' || !this.activeMission) {
-      return { title: 'FREE ROAM', detail: 'Explore Palma Verde. Steal cars, collect cash, evade police.' };
-    }
-
-    const m = this.activeMission;
-    if (m.id === 'm1_first_wheels') {
-      if (this.stepIndex === 0) {
-        const dist = Math.round(Math.hypot(player.position.x - m.startPoint.x, player.position.z - m.startPoint.z));
-        return { title: m.title, detail: `Hotwire the red Vipera GT near Club Neon (${dist}m)` };
+      // Step completed!
+      this.currentStepIndex++;
+      if (this.currentStepIndex >= data.steps.length) {
+        this.completeMission();
       } else {
-        const dist = Math.round(Math.hypot(player.position.x - m.dropPoint.x, player.position.z - m.dropPoint.z));
-        return { title: m.title, detail: `Deliver vehicle to Lorenzo's Harbor Garage (${dist}m)` };
+        const nextStep = data.steps[this.currentStepIndex];
+        this.updateBeaconPosition();
+        if (this.hud) {
+          this.hud.showMission(data.title, nextStep.text, this.timerRemaining);
+          this.hud.postMessage(`OBJECTIVE: ${nextStep.text}`);
+        }
       }
-    } else if (m.id === 'm2_bay_courier') {
-      const cp = m.checkpoints[this.stepIndex];
-      const dist = Math.round(Math.hypot(player.position.x - cp.x, player.position.z - cp.z));
-      const secs = Math.ceil(this.timer);
-      return {
-        title: m.title,
-        detail: `Checkpoint ${this.stepIndex + 1}/${m.checkpoints.length} along coastal road (${dist}m) [${secs}s remaining]`,
-      };
-    } else if (m.id === 'm3_heat_run') {
-      const dist = Math.round(Math.hypot(player.position.x - m.safehousePoint.x, player.position.z - m.safehousePoint.z));
-      return { title: m.title, detail: `Evade 3-Star pursuit & reach safehouse hideout (${dist}m)` };
     }
-
-    return { title: m.title, detail: 'In progress' };
-  }
-
-  getWaypointCoords() {
-    if (this.missionState !== 'ACTIVE' || !this.activeMission) return null;
-    return { x: this.waypointMesh.position.x, z: this.waypointMesh.position.z };
   }
 }

@@ -1,202 +1,195 @@
-// Neon Tide - Combat System, Gunplay, & Gang AI
-// Palma Verde Underworld
-
+// Neon Tide - Combat System, Melee Punches, Gunplay, Ammo & Gang Rivalries
 import * as THREE from 'three';
-import { CONFIG } from './config.js';
+import { PLAYER_CONFIG } from './config.js';
 
-export class CombatManager {
-  constructor(scene, audio) {
+export class GangMember {
+  constructor(scene, world, x, z) {
     this.scene = scene;
+    this.world = world;
+    this.position = new THREE.Vector3(x, 0, z);
+    this.rotation = Math.random() * Math.PI * 2;
+    this.health = 75;
+    this.state = 'IDLE'; // IDLE, ATTACKING, DEFEATED
+    this.shootTimer = 0;
+
+    this.mesh = this.buildGangMesh();
+    this.scene.add(this.mesh);
+    this.updateMeshTransform();
+  }
+
+  buildGangMesh() {
+    const group = new THREE.Group();
+
+    // Torso: Crimson leather vest
+    const torsoGeo = new THREE.BoxGeometry(0.65, 0.85, 0.38);
+    const torsoMat = new THREE.MeshLambertMaterial({ color: 0x990022 });
+    const torso = new THREE.Mesh(torsoGeo, torsoMat);
+    torso.position.y = 1.25;
+    torso.castShadow = true;
+    group.add(torso);
+
+    // Head
+    const headGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4);
+    const headMat = new THREE.MeshLambertMaterial({ color: 0xffdbac });
+    const head = new THREE.Mesh(headGeo, headMat);
+    head.position.y = 1.85;
+    head.castShadow = true;
+    group.add(head);
+
+    // Red Bandana
+    const bandanaGeo = new THREE.BoxGeometry(0.44, 0.12, 0.44);
+    const bandanaMat = new THREE.MeshBasicMaterial({ color: 0xff0033 });
+    const bandana = new THREE.Mesh(bandanaGeo, bandanaMat);
+    bandana.position.y = 1.95;
+    group.add(bandana);
+
+    // Weapon prop in hand
+    const gunGeo = new THREE.BoxGeometry(0.12, 0.16, 0.4);
+    const gunMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+    const gun = new THREE.Mesh(gunGeo, gunMat);
+    gun.position.set(0.45, 1.15, 0.3);
+    group.add(gun);
+
+    return group;
+  }
+  update(dt, player, audio) {
+    if (this.state === 'DEFEATED') return;
+
+    const dist = this.position.distanceTo(player.position);
+    if (dist < 22) {
+      this.state = 'ATTACKING';
+      // Face player
+      const toPlayer = new THREE.Vector3().subVectors(player.position, this.position);
+      this.rotation = Math.atan2(toPlayer.x, toPlayer.z);
+
+      // Shoot periodically
+      this.shootTimer += dt;
+      if (this.shootTimer > 2.2) {
+        this.shootTimer = 0;
+        if (audio) audio.playGunshot();
+        player.takeDamage(12);
+      }
+    } else {
+      this.state = 'IDLE';
+    }
+
+    this.updateMeshTransform();
+  }
+
+  takeDamage(amount) {
+    this.health -= amount;
+    if (this.health <= 0) {
+      this.state = 'DEFEATED';
+      this.mesh.rotation.x = Math.PI / 2;
+      this.mesh.position.y = 0.2;
+      return true; // Dropped loot
+    }
+    this.state = 'ATTACKING';
+    return false;
+  }
+
+  updateMeshTransform() {
+    this.mesh.position.copy(this.position);
+    this.mesh.rotation.y = this.rotation;
+  }
+}
+export class CombatManager {
+  constructor(scene, world, player, police, pedestrians, audio, hud) {
+    this.scene = scene;
+    this.world = world;
+    this.player = player;
+    this.police = police;
+    this.pedestrians = pedestrians;
     this.audio = audio;
+    this.hud = hud;
 
-    this.tracers = [];
     this.gangMembers = [];
-    this.raycaster = new THREE.Raycaster();
+    this.spawnPortGang();
   }
 
-  init(world) {
-    this.spawnHarborGangMembers();
-  }
-
-  spawnHarborGangMembers() {
-    // Syndicate gang enforcers stationed around Harbor warehouse
-    const gangSpots = [
-      { x: 185, z: 95 },
-      { x: 195, z: 85 },
-      { x: 205, z: 110 },
+  spawnPortGang() {
+    // Spawn 6 rival cartel members in port warehouse yard
+    const spots = [
+      { x: 95, z: -105 },
+      { x: 110, z: -115 },
+      { x: 125, z: -95 },
+      { x: 80, z: -125 },
+      { x: 135, z: -130 },
+      { x: 100, z: -140 }
     ];
-
-    for (const spot of gangSpots) {
-      const group = new THREE.Group();
-
-      // Red bandana & dark jacket
-      const torso = new THREE.Mesh(
-        new THREE.BoxGeometry(0.5, 0.7, 0.3),
-        new THREE.MeshLambertMaterial({ color: 0x212121 }),
-      );
-      torso.position.y = 1.0;
-      group.add(torso);
-
-      const head = new THREE.Mesh(
-        new THREE.BoxGeometry(0.3, 0.3, 0.3),
-        new THREE.MeshLambertMaterial({ color: 0x8d6e63 }),
-      );
-      head.position.y = 1.55;
-      group.add(head);
-
-      const bandana = new THREE.Mesh(
-        new THREE.BoxGeometry(0.32, 0.1, 0.32),
-        new THREE.MeshBasicMaterial({ color: 0xd50000 }), // Red syndicate bandana
-      );
-      bandana.position.y = 1.58;
-      group.add(bandana);
-
-      group.position.set(spot.x, 0.3, spot.z);
-      this.scene.add(group);
-
-      this.gangMembers.push({
-        group,
-        position: group.position,
-        health: 60,
-        isHostile: false,
-        shootCooldown: 0,
-      });
-    }
-  }
-
-  update(dt, input, player, pedestrians, police, vehicles, world) {
-    // Clean up expired bullet tracers
-    for (let i = this.tracers.length - 1; i >= 0; i--) {
-      const tr = this.tracers[i];
-      tr.life -= dt;
-      if (tr.life <= 0) {
-        this.scene.remove(tr.mesh);
-        this.tracers.splice(i, 1);
-      }
-    }
-
-    // Player Melee Punch (F key)
-    if (input.justPunch() && !player.inVehicle && !player.isDead) {
-      player.triggerPunch();
-      this.audio.playPunch();
-      this.handleMeleeHit(player, pedestrians, police);
-    }
-
-    // Player Shooting (Left Click)
-    if (input.justShoot() && !player.inVehicle && !player.isDead) {
-      if (player.ammo > 0) {
-        player.ammo--;
-        this.audio.playGunshot();
-        this.handleGunshot(player, pedestrians, police, vehicles, world);
-      }
-    }
-
-    // Hostile Gang AI Update
-    for (const gang of this.gangMembers) {
-      if (gang.health <= 0) continue;
-
-      const dist = gang.position.distanceTo(player.position);
-      if (dist < 22 && (gang.isHostile || police.wantedLevel >= 2)) {
-        gang.isHostile = true;
-        gang.shootCooldown -= dt;
-
-        // Face player
-        const toX = player.position.x - gang.position.x;
-        const toZ = player.position.z - gang.position.z;
-        gang.group.rotation.y = Math.atan2(toX, toZ);
-
-        if (gang.shootCooldown <= 0) {
-          gang.shootCooldown = 1.6 + Math.random() * 0.8;
-          this.audio.playGunshot();
-          player.takeDamage(12);
-          this.createBulletTracer(gang.position, player.position, 0xff1744);
-        }
-      }
-    }
-  }
-
-  handleMeleeHit(player, pedestrians, police) {
-    const forwardX = Math.sin(player.rotation);
-    const forwardZ = Math.cos(player.rotation);
-
-    // Check pedestrians within punch arc
-    for (const ped of pedestrians.pedestrians) {
-      if (ped.state === 'DOWNED') continue;
-      const dist = player.position.distanceTo(ped.position);
-      if (dist < CONFIG.PLAYER.PUNCH_RANGE) {
-        const toX = ped.position.x - player.position.x;
-        const toZ = ped.position.z - player.position.z;
-        const dot = toX * forwardX + toZ * forwardZ;
-
-        if (dot > 0.3) {
-          ped.health -= CONFIG.PLAYER.PUNCH_DAMAGE;
-          if (ped.health <= 0) {
-            pedestrians.downPedestrian(ped, player, (c) => police.reportCrime(c));
-          }
-          break;
-        }
-      }
-    }
-  }
-
-  handleGunshot(player, pedestrians, police, vehicles, world) {
-    // Gunshot alerts surrounding pedestrians to panic
-    pedestrians.triggerPanicNearby(player.position, 35);
-    police.reportCrime('DISCHARGE');
-
-    // Calculate bullet trajectory from player eye along camera forward direction
-    const eyePos = player.position.clone().add(new THREE.Vector3(0, 1.5, 0));
-    const camDir = new THREE.Vector3();
-    player.camera.getWorldDirection(camDir);
-
-    const hitPoint = eyePos.clone().add(camDir.clone().multiplyScalar(CONFIG.PLAYER.PISTOL_RANGE));
-
-    // Check hit against pedestrians
-    for (const ped of pedestrians.pedestrians) {
-      if (ped.state === 'DOWNED') continue;
-      const toPed = ped.position.clone().add(new THREE.Vector3(0, 1, 0)).sub(eyePos);
-      const proj = toPed.dot(camDir);
-      if (proj > 0 && proj < CONFIG.PLAYER.PISTOL_RANGE) {
-        const closestPoint = eyePos.clone().add(camDir.clone().multiplyScalar(proj));
-        if (closestPoint.distanceTo(ped.position.clone().add(new THREE.Vector3(0, 1, 0))) < 0.8) {
-          ped.health -= CONFIG.PLAYER.PISTOL_DAMAGE;
-          if (ped.health <= 0) {
-            pedestrians.downPedestrian(ped, player, (c) => police.reportCrime(c));
-          }
-          hitPoint.copy(closestPoint);
-          break;
-        }
-      }
-    }
-
-    // Check hit against vehicles
-    for (const v of vehicles.vehicles) {
-      const toCar = v.position.clone().add(new THREE.Vector3(0, 0.8, 0)).sub(eyePos);
-      const proj = toCar.dot(camDir);
-      if (proj > 0 && proj < CONFIG.PLAYER.PISTOL_RANGE) {
-        const closest = eyePos.clone().add(camDir.clone().multiplyScalar(proj));
-        if (closest.distanceTo(v.position) < v.radius) {
-          v.health -= CONFIG.PLAYER.PISTOL_DAMAGE;
-          hitPoint.copy(closest);
-          this.audio.playCrash();
-          break;
-        }
-      }
-    }
-
-    // Create glowing neon bullet tracer
-    this.createBulletTracer(eyePos, hitPoint, 0x00e5ff);
-  }
-
-  createBulletTracer(from, to, color = 0x00e5ff) {
-    const geo = new THREE.BufferGeometry().setFromPoints([from, to]);
-    const mat = new THREE.LineBasicMaterial({ color, linewidth: 2 });
-    const line = new THREE.Line(geo, mat);
-    this.scene.add(line);
-
-    this.tracers.push({
-      mesh: line,
-      life: 0.08,
+    spots.forEach(p => {
+      const gang = new GangMember(this.scene, this.world, p.x, p.z);
+      this.gangMembers.push(gang);
     });
+  }
+
+  handlePlayerPunch() {
+    if (this.audio) this.audio.playPunch();
+    if (this.hud) this.hud.postMessage('Melee Strike');
+
+    // Check hit on gang members
+    for (const g of this.gangMembers) {
+      if (g.state !== 'DEFEATED' && this.player.position.distanceTo(g.position) < PLAYER_CONFIG.PUNCH_RANGE) {
+        const defeated = g.takeDamage(PLAYER_CONFIG.PUNCH_DAMAGE);
+        if (defeated) {
+          this.player.cash += 80;
+          if (this.hud) this.hud.postMessage('Rival Defeated: +$80');
+        }
+        return;
+      }
+    }
+
+    // Check hit on pedestrians
+    if (this.pedestrians) {
+      for (const p of this.pedestrians.pedestrians) {
+        if (p.state !== 'KNOCKED_DOWN' && this.player.position.distanceTo(p.position) < PLAYER_CONFIG.PUNCH_RANGE) {
+          p.takeHit(PLAYER_CONFIG.PUNCH_DAMAGE);
+          if (this.police) this.police.reportCrime('HIT_PEDESTRIAN');
+          return;
+        }
+      }
+    }
+  }
+  handlePlayerShoot(camera) {
+    if (this.player.ammo <= 0) {
+      if (this.hud) this.hud.postMessage('Out of Ammo!');
+      return;
+    }
+
+    this.player.ammo--;
+    if (this.audio) this.audio.playGunshot();
+    if (this.police) this.police.reportCrime('FIRE_WEAPON');
+    if (this.pedestrians) this.pedestrians.triggerPanicAt(this.player.position);
+
+    // Aim forward raycast
+    const pPos = this.player.position;
+    const forward = new THREE.Vector3(-Math.sin(this.player.cameraYaw), 0, -Math.cos(this.player.cameraYaw));
+
+    for (const g of this.gangMembers) {
+      if (g.state === 'DEFEATED') continue;
+      const toG = new THREE.Vector3().subVectors(g.position, pPos);
+      const dist = toG.length();
+      if (dist < PLAYER_CONFIG.GUN_RANGE && forward.dot(toG.normalize()) > 0.82) {
+        const defeated = g.takeDamage(PLAYER_CONFIG.GUN_DAMAGE);
+        if (defeated) {
+          this.player.cash += 120;
+          if (this.hud) this.hud.postMessage('Rival Eliminated: +$120');
+        }
+        return;
+      }
+    }
+  }
+
+  update(dt, input, camera) {
+    if (input.consumePress('KeyF')) {
+      this.handlePlayerPunch();
+    }
+    if (input.consumeClick()) {
+      this.handlePlayerShoot(camera);
+    }
+
+    for (const g of this.gangMembers) {
+      g.update(dt, this.player, this.audio);
+    }
   }
 }

@@ -1,179 +1,117 @@
-// Neon Tide - Input Manager
-// Handles Keyboard, Mouse orbit, and Action states
+// Neon Tide - Keyboard and Mouse Input Handler
 
-export class InputManager {
+export class InputHandler {
   constructor() {
-    this.keys = new Map();
-    this.prevKeys = new Map();
-    this.justPressedKeys = new Set();
-
+    this.keys = {};
+    this.justPressed = {};
     this.mouse = {
-      x: 0,
-      y: 0,
-      dx: 0,
-      dy: 0,
-      leftDown: false,
-      rightDown: false,
-      leftJustPressed: false,
-      isLocked: false,
+      isDown: false,
+      justClicked: false,
+      deltaX: 0,
+      deltaY: 0,
+      pointerLocked: false
     };
 
-    this.domElement = null;
-    this.enabled = true;
+    this.onKeyDown = this.onKeyDown.bind(this);
+    this.onKeyUp = this.onKeyUp.bind(this);
+    this.onMouseDown = this.onMouseDown.bind(this);
+    this.onMouseUp = this.onMouseUp.bind(this);
+    this.onMouseMove = this.onMouseMove.bind(this);
+    this.onPointerLockChange = this.onPointerLockChange.bind(this);
+
+    this.init();
   }
 
-  init(domElement = window) {
-    this.domElement = domElement;
-
-    window.addEventListener('keydown', (e) => this.onKeyDown(e));
-    window.addEventListener('keyup', (e) => this.onKeyUp(e));
-    window.addEventListener('mousemove', (e) => this.onMouseMove(e));
-    window.addEventListener('mousedown', (e) => this.onMouseDown(e));
-    window.addEventListener('mouseup', (e) => this.onMouseUp(e));
-    window.addEventListener('contextmenu', (e) => e.preventDefault());
-
-    document.addEventListener('pointerlockchange', () => {
-      this.mouse.isLocked = document.pointerLockElement === this.domElement;
-    });
+  init() {
+    window.addEventListener('keydown', this.onKeyDown);
+    window.addEventListener('keyup', this.onKeyUp);
+    window.addEventListener('mousedown', this.onMouseDown);
+    window.addEventListener('mouseup', this.onMouseUp);
+    window.addEventListener('mousemove', this.onMouseMove);
+    document.addEventListener('pointerlockchange', this.onPointerLockChange);
   }
 
-  requestPointerLock() {
-    if (this.domElement && this.domElement.requestPointerLock) {
-      try {
-        this.domElement.requestPointerLock();
-      } catch (_) {}
-    }
+  destroy() {
+    window.removeEventListener('keydown', this.onKeyDown);
+    window.removeEventListener('keyup', this.onKeyUp);
+    window.removeEventListener('mousedown', this.onMouseDown);
+    window.removeEventListener('mouseup', this.onMouseUp);
+    window.removeEventListener('mousemove', this.onMouseMove);
+    document.removeEventListener('pointerlockchange', this.onPointerLockChange);
   }
-
-  exitPointerLock() {
-    if (document.exitPointerLock) {
-      try {
-        document.exitPointerLock();
-      } catch (_) {}
-    }
-  }
-
   onKeyDown(e) {
     const code = e.code;
-    if (!this.keys.get(code)) {
-      this.justPressedKeys.add(code);
+    if (!this.keys[code]) {
+      this.justPressed[code] = true;
     }
-    this.keys.set(code, true);
+    this.keys[code] = true;
 
-    // Prevent scrolling for game controls
+    // Prevent default scrolling on space / arrow keys
     if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(code)) {
       e.preventDefault();
     }
   }
 
   onKeyUp(e) {
-    this.keys.set(e.code, false);
-  }
-
-  onMouseMove(e) {
-    if (this.mouse.isLocked) {
-      this.mouse.dx += e.movementX || 0;
-      this.mouse.dy += e.movementY || 0;
-    } else if (this.mouse.rightDown || this.mouse.leftDown) {
-      this.mouse.dx += e.movementX || 0;
-      this.mouse.dy += e.movementY || 0;
-    }
-    this.mouse.x = e.clientX;
-    this.mouse.y = e.clientY;
+    this.keys[e.code] = false;
   }
 
   onMouseDown(e) {
     if (e.button === 0) {
-      this.mouse.leftDown = true;
-      this.mouse.leftJustPressed = true;
-    } else if (e.button === 2) {
-      this.mouse.rightDown = true;
+      this.mouse.isDown = true;
+      this.mouse.justClicked = true;
     }
   }
 
   onMouseUp(e) {
     if (e.button === 0) {
-      this.mouse.leftDown = false;
-    } else if (e.button === 2) {
-      this.mouse.rightDown = false;
+      this.mouse.isDown = false;
     }
   }
 
-  // Poll & clear one-frame triggers
-  update() {
-    this.justPressedKeys.clear();
-    this.mouse.leftJustPressed = false;
+  onMouseMove(e) {
+    this.mouse.deltaX += e.movementX || 0;
+    this.mouse.deltaY += e.movementY || 0;
   }
 
-  consumeMouseDelta() {
-    const dx = this.mouse.dx;
-    const dy = this.mouse.dy;
-    this.mouse.dx = 0;
-    this.mouse.dy = 0;
-    return { dx, dy };
+  onPointerLockChange() {
+    this.mouse.pointerLocked = document.pointerLockElement !== null;
   }
 
   isDown(code) {
-    return !!this.keys.get(code);
+    return !!this.keys[code];
   }
 
-  wasJustPressed(code) {
-    return this.justPressedKeys.has(code);
+  consumePress(code) {
+    if (this.justPressed[code]) {
+      this.justPressed[code] = false;
+      return true;
+    }
+    return false;
   }
 
-  // High-level gameplay queries
-  isForward() {
-    return this.isDown('KeyW') || this.isDown('ArrowUp');
+  consumeClick() {
+    if (this.mouse.justClicked) {
+      this.mouse.justClicked = false;
+      return true;
+    }
+    return false;
   }
 
-  isBackward() {
-    return this.isDown('KeyS') || this.isDown('ArrowDown');
-  }
-
-  isLeft() {
-    return this.isDown('KeyA') || this.isDown('ArrowLeft');
-  }
-
-  isRight() {
-    return this.isDown('KeyD') || this.isDown('ArrowRight');
-  }
-
-  isSprint() {
-    return this.isDown('ShiftLeft') || this.isDown('ShiftRight');
-  }
-
-  isHandbrake() {
-    return this.isDown('Space');
-  }
-
-  justEnterVehicle() {
-    return this.wasJustPressed('KeyE');
-  }
-
-  justPunch() {
-    return this.wasJustPressed('KeyF');
-  }
-
-  justShoot() {
-    return this.mouse.leftJustPressed;
-  }
-
-  justPause() {
-    return this.wasJustPressed('KeyP') || this.wasJustPressed('Escape');
-  }
-
-  justMute() {
-    return this.wasJustPressed('KeyM');
+  getAndResetMouseDelta() {
+    const dx = this.mouse.deltaX;
+    const dy = this.mouse.deltaY;
+    this.mouse.deltaX = 0;
+    this.mouse.deltaY = 0;
+    return { dx, dy };
   }
 
   reset() {
-    this.keys.clear();
-    this.prevKeys.clear();
-    this.justPressedKeys.clear();
-    this.mouse.dx = 0;
-    this.mouse.dy = 0;
-    this.mouse.leftDown = false;
-    this.mouse.rightDown = false;
-    this.mouse.leftJustPressed = false;
+    this.keys = {};
+    this.justPressed = {};
+    this.mouse.isDown = false;
+    this.mouse.justClicked = false;
+    this.mouse.deltaX = 0;
+    this.mouse.deltaY = 0;
   }
 }

@@ -1,212 +1,165 @@
-// Neon Tide - Pedestrian AI & Sidewalk Life
-// Pedestrians of Palma Verde
-
+// Neon Tide - Pedestrians, Sidewalk AI Wandering, Panic & Hit Reactions
 import * as THREE from 'three';
-import { CONFIG } from './config.js';
+import { WORLD_CONFIG } from './config.js';
 
-export class PedestrianManager {
-  constructor(scene, audio) {
+export class Pedestrian {
+  constructor(scene, world, x, z) {
     this.scene = scene;
-    this.audio = audio;
-    this.pedestrians = [];
+    this.world = world;
 
-    this.skinColors = [0xd7ccc8, 0x8d6e63, 0xffccbc, 0x5d4037];
-    this.shirtColors = [0xe91e63, 0x00e676, 0xffeb3b, 0x00b0ff, 0xff5722, 0x9c27b0, 0xffffff];
-    this.pantColors = [0x1565c0, 0x212121, 0xeeeeee, 0x37474f, 0x4e342e];
+    this.position = new THREE.Vector3(x, 0, z);
+    this.rotation = Math.random() * Math.PI * 2;
+    this.speed = 1.8 + Math.random() * 1.4;
+    this.state = 'WALKING'; // WALKING, PANICKED, KNOCKED_DOWN
+    this.animTime = Math.random() * 10;
+    this.health = 40;
+    this.knockedTimer = 0;
+
+    this.mesh = this.buildPedestrianMesh();
+    this.scene.add(this.mesh);
+    this.updateMeshTransform();
   }
 
-  init(world) {
-    this.spawnPedestrians(world);
-  }
-
-  createPedestrianMesh(skinColor, shirtColor, pantColor) {
+  buildPedestrianMesh() {
     const group = new THREE.Group();
+    const shirtColors = [0xff4488, 0x44ddaa, 0xffbb33, 0x9955ee, 0x33bbee, 0xeeeeee];
+    const shirtColor = shirtColors[Math.floor(Math.random() * shirtColors.length)];
 
     // Torso
-    const torsoGeo = new THREE.BoxGeometry(0.45, 0.65, 0.28);
+    const torsoGeo = new THREE.BoxGeometry(0.55, 0.75, 0.32);
     const torsoMat = new THREE.MeshLambertMaterial({ color: shirtColor });
     const torso = new THREE.Mesh(torsoGeo, torsoMat);
-    torso.position.y = 0.95;
+    torso.position.y = 1.15;
     torso.castShadow = true;
     group.add(torso);
 
     // Head
-    const headGeo = new THREE.BoxGeometry(0.28, 0.3, 0.28);
-    const headMat = new THREE.MeshLambertMaterial({ color: skinColor });
+    const headGeo = new THREE.BoxGeometry(0.36, 0.38, 0.36);
+    const headMat = new THREE.MeshLambertMaterial({ color: 0xffdbac });
     const head = new THREE.Mesh(headGeo, headMat);
-    head.position.y = 1.48;
+    head.position.y = 1.72;
     head.castShadow = true;
     group.add(head);
 
-    // Arms
-    const armGeo = new THREE.BoxGeometry(0.14, 0.55, 0.14);
-    const armMat = new THREE.MeshLambertMaterial({ color: skinColor });
-
-    const leftArm = new THREE.Mesh(armGeo, armMat);
-    leftArm.position.set(-0.32, 0.95, 0);
-    group.add(leftArm);
-
-    const rightArm = new THREE.Mesh(armGeo, armMat);
-    rightArm.position.set(0.32, 0.95, 0);
-    group.add(rightArm);
-
     // Legs
-    const legGeo = new THREE.BoxGeometry(0.18, 0.65, 0.2);
-    const legMat = new THREE.MeshLambertMaterial({ color: pantColor });
+    const legGeo = new THREE.BoxGeometry(0.22, 0.75, 0.25);
+    const legMat = new THREE.MeshLambertMaterial({ color: 0x223344 });
+    this.leftLeg = new THREE.Mesh(legGeo, legMat);
+    this.leftLeg.position.set(-0.16, 0.38, 0);
+    this.rightLeg = new THREE.Mesh(legGeo, legMat);
+    this.rightLeg.position.set(0.16, 0.38, 0);
+    group.add(this.leftLeg);
+    group.add(this.rightLeg);
 
-    const leftLeg = new THREE.Mesh(legGeo, legMat);
-    leftLeg.position.set(-0.14, 0.33, 0);
-    leftLeg.castShadow = true;
-    group.add(leftLeg);
+    return group;
+  }
+  update(dt, playerPos, dangerPos) {
+    if (this.state === 'KNOCKED_DOWN') {
+      this.knockedTimer += dt;
+      if (this.knockedTimer > 15) {
+        // Recover after 15s
+        this.state = 'WALKING';
+        this.mesh.rotation.z = 0;
+        this.knockedTimer = 0;
+      }
+      return;
+    }
 
-    const rightLeg = new THREE.Mesh(legGeo, legMat);
-    rightLeg.position.set(0.14, 0.33, 0);
-    rightLeg.castShadow = true;
-    group.add(rightLeg);
+    // Panic check: danger nearby (e.g. gunfire, speeding car)
+    if (dangerPos && this.position.distanceTo(dangerPos) < 18) {
+      this.state = 'PANICKED';
+      const away = new THREE.Vector3().subVectors(this.position, dangerPos);
+      this.rotation = Math.atan2(away.x, away.z);
+    }
 
-    return { group, leftArm, rightArm, leftLeg, rightLeg };
+    const currentSpeed = this.state === 'PANICKED' ? this.speed * 2.6 : this.speed;
+    const moveX = Math.sin(this.rotation) * currentSpeed * dt;
+    const moveZ = Math.cos(this.rotation) * currentSpeed * dt;
+
+    // Boundary & collision avoidance
+    const nextX = this.position.x + moveX;
+    const nextZ = this.position.z + moveZ;
+    if (this.world.checkCollision(nextX, nextZ, 0.4)) {
+      this.rotation += Math.PI * 0.7; // Turn around
+    } else {
+      this.position.x = nextX;
+      this.position.z = nextZ;
+    }
+
+    // Walking stride animation
+    this.animTime += dt * (this.state === 'PANICKED' ? 14 : 7);
+    this.leftLeg.rotation.x = Math.sin(this.animTime) * 0.55;
+    this.rightLeg.rotation.x = -Math.sin(this.animTime) * 0.55;
+
+    this.updateMeshTransform();
   }
 
-  spawnPedestrians(world) {
-    const { GRID_BLOCKS_X, GRID_BLOCKS_Z, BLOCK_SIZE, ROAD_WIDTH } = CONFIG.WORLD;
-    const pitch = BLOCK_SIZE + ROAD_WIDTH;
+  takeHit(damage = 30) {
+    this.health -= damage;
+    if (this.health <= 0) {
+      this.state = 'KNOCKED_DOWN';
+      this.mesh.rotation.z = Math.PI / 2; // Lie on ground
+      this.mesh.position.y = 0.2;
+      return true; // Knocked down
+    }
+    this.state = 'PANICKED';
+    return false;
+  }
 
-    for (let i = 0; i < CONFIG.PEDESTRIANS.COUNT; i++) {
-      const skin = this.skinColors[i % this.skinColors.length];
-      const shirt = this.shirtColors[i % this.shirtColors.length];
-      const pant = this.pantColors[i % this.pantColors.length];
+  updateMeshTransform() {
+    this.mesh.position.copy(this.position);
+    this.mesh.rotation.y = this.rotation;
+  }
+}
+export class PedestrianManager {
+  constructor(scene, world) {
+    this.scene = scene;
+    this.world = world;
+    this.pedestrians = [];
 
-      const parts = this.createPedestrianMesh(skin, shirt, pant);
+    this.spawnPedestrians();
+  }
 
-      // Place along sidewalk perimeters
-      const gx = i % GRID_BLOCKS_X;
-      const gz = Math.floor(i / GRID_BLOCKS_X) % GRID_BLOCKS_Z;
-      const bx = -((GRID_BLOCKS_X * pitch) / 2) + gx * pitch + pitch / 2;
-      const bz = -((GRID_BLOCKS_Z * pitch) / 2) + gz * pitch + pitch / 2;
+  spawnPedestrians() {
+    const { CITY_SIZE } = WORLD_CONFIG;
+    const half = CITY_SIZE / 2 - 30;
 
-      const side = (i % 4);
-      let px = bx;
-      let pz = bz;
-      const offset = BLOCK_SIZE / 2 - 2;
-
-      if (side === 0) { px += offset; pz += (Math.random() - 0.5) * BLOCK_SIZE; }
-      else if (side === 1) { px -= offset; pz += (Math.random() - 0.5) * BLOCK_SIZE; }
-      else if (side === 2) { pz += offset; px += (Math.random() - 0.5) * BLOCK_SIZE; }
-      else { pz -= offset; px += (Math.random() - 0.5) * BLOCK_SIZE; }
-
-      parts.group.position.set(px, 0.3, pz);
-      this.scene.add(parts.group);
-
-      const ped = {
-        parts,
-        group: parts.group,
-        position: parts.group.position,
-        rotation: Math.random() * Math.PI * 2,
-        state: 'WANDER', // WANDER, PANIC, DOWNED
-        health: CONFIG.PEDESTRIANS.MAX_HEALTH,
-        speed: CONFIG.PEDESTRIANS.WALK_SPEED,
-        walkCycle: Math.random() * 10,
-        panicTimer: 0,
-        hasDroppedCash: false,
-      };
-
+    for (let i = 0; i < 35; i++) {
+      const x = (Math.random() * 2 - 1) * half;
+      const z = (Math.random() * 2 - 1) * half;
+      const ped = new Pedestrian(this.scene, this.world, x, z);
       this.pedestrians.push(ped);
     }
   }
 
-  update(dt, player, vehicles, world, onCrime) {
+  triggerPanicAt(pos) {
     for (const ped of this.pedestrians) {
-      if (ped.state === 'DOWNED') {
-        continue;
-      }
-
-      // Check collision with player vehicle
-      if (player.inVehicle && player.currentVehicle) {
-        const v = player.currentVehicle;
-        const dist = ped.position.distanceTo(v.position);
-        if (dist < v.radius + 0.6 && Math.abs(v.speed) > 3.0) {
-          // Hit by player car!
-          this.downPedestrian(ped, player, onCrime);
-          continue;
-        }
-      }
-
-      // Check panic triggers (gunshots or fast vehicle near)
-      if (ped.state === 'PANIC') {
-        ped.panicTimer -= dt;
-        if (ped.panicTimer <= 0) {
-          ped.state = 'WANDER';
-          ped.speed = CONFIG.PEDESTRIANS.WALK_SPEED;
-        }
-      }
-
-      // Movement update
-      const moveSpeed = ped.state === 'PANIC' ? CONFIG.PEDESTRIANS.RUN_SPEED : ped.speed;
-      const moveDist = moveSpeed * dt;
-
-      const dirX = Math.sin(ped.rotation);
-      const dirZ = Math.cos(ped.rotation);
-
-      const nextX = ped.position.x + dirX * moveDist;
-      const nextZ = ped.position.z + dirZ * moveDist;
-
-      // Obstacle collision: turn if walking into building
-      if (world.checkCollision(nextX, nextZ, 0.4)) {
-        ped.rotation += Math.PI * 0.75;
-      } else {
-        ped.position.x = nextX;
-        ped.position.z = nextZ;
-      }
-
-      // Random wander redirection occasionally
-      if (Math.random() < 0.015 && ped.state === 'WANDER') {
-        ped.rotation += (Math.random() - 0.5) * 1.5;
-      }
-
-      // Limb animation
-      ped.walkCycle += dt * (ped.state === 'PANIC' ? 18 : 8);
-      ped.parts.leftLeg.rotation.x = Math.sin(ped.walkCycle) * 0.6;
-      ped.parts.rightLeg.rotation.x = -Math.sin(ped.walkCycle) * 0.6;
-      ped.parts.leftArm.rotation.x = -Math.sin(ped.walkCycle) * 0.5;
-      ped.parts.rightArm.rotation.x = Math.sin(ped.walkCycle) * 0.5;
-
-      ped.group.rotation.y = ped.rotation;
-    }
-  }
-
-  triggerPanicNearby(point, radius = 25) {
-    for (const ped of this.pedestrians) {
-      if (ped.state === 'DOWNED') continue;
-      if (ped.position.distanceTo(point) < radius) {
-        ped.state = 'PANIC';
-        ped.panicTimer = 8.0;
-        // Run away from threat point
-        const awayX = ped.position.x - point.x;
-        const awayZ = ped.position.z - point.z;
-        ped.rotation = Math.atan2(awayX, awayZ);
+      if (ped.position.distanceTo(pos) < 22) {
+        ped.state = 'PANICKED';
+        const away = new THREE.Vector3().subVectors(ped.position, pos);
+        ped.rotation = Math.atan2(away.x, away.z);
       }
     }
   }
 
-  downPedestrian(ped, player, onCrime) {
-    ped.state = 'DOWNED';
-    ped.health = 0;
-    this.audio.playCrash();
-
-    // Ragdoll onto ground
-    ped.group.rotation.x = Math.PI / 2;
-    ped.group.position.y = 0.2;
-
-    // Report hit crime
-    if (onCrime) {
-      onCrime('HIT_PED');
+  checkVehicleCollisions(vehicles) {
+    let hitCount = 0;
+    for (const v of vehicles) {
+      if (Math.abs(v.velocity) < 3.5) continue;
+      for (const ped of this.pedestrians) {
+        if (ped.state === 'KNOCKED_DOWN') continue;
+        if (ped.position.distanceTo(v.position) < 2.2) {
+          const wasKnocked = ped.takeHit(50);
+          if (wasKnocked) hitCount++;
+        }
+      }
     }
+    return hitCount;
+  }
 
-    // Drop cash briefcase
-    if (!ped.hasDroppedCash) {
-      ped.hasDroppedCash = true;
-      const cashVal = Math.floor(CONFIG.PEDESTRIANS.CASH_DROP.min + Math.random() * (CONFIG.PEDESTRIANS.CASH_DROP.max - CONFIG.PEDESTRIANS.CASH_DROP.min));
-      player.cash += cashVal;
+  update(dt, playerPos, dangerPos) {
+    for (const ped of this.pedestrians) {
+      ped.update(dt, playerPos, dangerPos);
     }
   }
 }
