@@ -1,50 +1,56 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
   <title>Neon Tide - Palma Verde</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
-    body, html { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; color: #fff; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0a14; font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif; color: #fff; }
     #canvas-container { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; }
+    canvas { display: block; width: 100%; height: 100%; }
     #hud { position: absolute; inset: 0; pointer-events: none; z-index: 10; display: flex; flex-direction: column; justify-content: space-between; padding: 18px; }
     .hud-top { display: flex; justify-content: space-between; align-items: flex-start; }
+    .hud-status { display: flex; flex-direction: column; gap: 6px; }
+    .health-bar-bg { width: 220px; height: 18px; background: rgba(0,0,0,0.65); border: 2px solid rgba(255,255,255,0.3); border-radius: 9px; overflow: hidden; }
+    .health-bar-fill { width: 100%; height: 100%; background: linear-gradient(90deg, #ff3366, #33ff66); transition: width 0.15s ease; }
+    .stats-row { display: flex; gap: 14px; font-weight: 800; font-size: 16px; text-shadow: 0 2px 4px rgba(0,0,0,0.8); }
+    .stat-cash { color: #55ff88; letter-spacing: 1px; }
+    .stat-ammo { color: #ffbb33; }
+    .wanted-stars { display: flex; gap: 4px; font-size: 20px; color: rgba(255,255,255,0.25); text-shadow: 0 0 6px rgba(0,0,0,0.8); }
+    .wanted-stars .star-active { color: #ffcc00; text-shadow: 0 0 8px #ffcc00; animation: star-blink 0.8s infinite alternate; }
+    @keyframes star-blink { from { opacity: 0.7; } to { opacity: 1; } }
+    .mission-hud { max-width: 380px; background: rgba(10,12,24,0.75); border-left: 4px solid #00f0ff; padding: 10px 14px; border-radius: 4px; backdrop-filter: blur(4px); }
+    .mission-hud h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; color: #00f0ff; margin-bottom: 4px; }
+    .mission-hud p { font-size: 14px; line-height: 1.3; color: #e6e6f0; }
+    .mission-timer { font-size: 18px; font-weight: 900; color: #ffdd44; margin-top: 4px; }
+    .feed { display: flex; flex-direction: column-reverse; gap: 6px; max-width: 320px; }
+    .feed-msg { background: rgba(0,0,0,0.65); padding: 6px 12px; border-radius: 4px; font-size: 13px; font-weight: 600; color: #fff; animation: fade-in 0.3s ease; border-left: 3px solid #ff007f; }
+    @keyframes fade-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
     .hud-bottom { display: flex; justify-content: space-between; align-items: flex-end; }
-    .hud-panel { background: rgba(12, 16, 28, 0.78); backdrop-filter: blur(8px); border: 1px solid rgba(0, 240, 255, 0.35); border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); padding: 12px 18px; }
-    #mission-box { max-width: 380px; }
-    #mission-title { font-size: 13px; text-transform: uppercase; letter-spacing: 2px; color: #ff0077; font-weight: 800; margin-bottom: 4px; }
-    #mission-desc { font-size: 15px; font-weight: 600; color: #e0f8ff; text-shadow: 0 1px 4px rgba(0,0,0,0.8); }
-    #mission-timer { font-size: 16px; font-weight: 800; color: #ffcc00; margin-top: 4px; display: none; }
-  </style>
-  <style>
-    #wanted-box { display: flex; gap: 6px; align-items: center; }
-    .star { font-size: 26px; color: rgba(255,255,255,0.2); text-shadow: 0 0 4px rgba(0,0,0,0.8); transition: all 0.2s; }
-    .star.active { color: #ffbb00; text-shadow: 0 0 12px #ffbb00, 0 0 20px #ff3300; }
-    .star.pulse { animation: starPulse 0.6s infinite alternate; }
-    @keyframes starPulse { from { transform: scale(1); } to { transform: scale(1.22); color: #ff1133; } }
-    #stats-box { text-align: right; min-width: 180px; }
-    #cash-display { font-size: 24px; font-weight: 800; color: #39ff14; text-shadow: 0 0 10px rgba(57,255,20,0.5); font-family: monospace; }
-    #health-bar-wrap { width: 100%; height: 14px; background: rgba(0,0,0,0.6); border: 1px solid #ff0055; border-radius: 4px; overflow: hidden; margin: 6px 0; }
-    #health-bar-fill { width: 100%; height: 100%; background: linear-gradient(90deg, #ff0055, #39ff14); transition: width 0.15s ease-out; }
-    #ammo-display { font-size: 15px; font-weight: 700; color: #00e5ff; letter-spacing: 1px; font-family: monospace; }
-    #speedo-box { text-align: center; display: none; }
-    #speedo-val { font-size: 32px; font-weight: 900; color: #00f0ff; text-shadow: 0 0 12px #00f0ff; font-family: monospace; }
-    #speedo-unit { font-size: 12px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
-    #vehicle-name { font-size: 13px; font-weight: 700; color: #ff0077; letter-spacing: 1px; text-transform: uppercase; }
-  </style>
-  <style>
-    #minimap-container { position: relative; width: 170px; height: 170px; border-radius: 50%; border: 3px solid rgba(0, 240, 255, 0.7); box-shadow: 0 0 16px rgba(0, 240, 255, 0.4), inset 0 0 16px rgba(0,0,0,0.8); overflow: hidden; background: #060b14; }
-    #minimap { width: 100%; height: 100%; display: block; }
-    #msg-feed { position: absolute; left: 20px; top: 120px; max-width: 320px; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
-    .msg-item { background: rgba(10, 15, 25, 0.85); border-left: 4px solid #00f0ff; padding: 6px 12px; font-size: 13px; font-weight: 600; color: #fff; border-radius: 0 6px 6px 0; animation: fadeIn 0.3s; }
-    #prompt-box { position: absolute; bottom: 120px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); border: 1px solid #ffcc00; padding: 8px 18px; border-radius: 20px; font-size: 14px; font-weight: 700; color: #ffcc00; display: none; text-shadow: 0 0 8px rgba(255,204,0,0.6); pointer-events: none; }
-    .modal-overlay { position: absolute; inset: 0; background: rgba(5, 8, 15, 0.88); backdrop-filter: blur(10px); z-index: 100; display: flex; align-items: center; justify-content: center; flex-direction: column; }
-    .btn { background: linear-gradient(135deg, #ff0077, #7928ca); color: #fff; border: none; padding: 12px 32px; font-size: 16px; font-weight: 800; border-radius: 6px; cursor: pointer; text-transform: uppercase; letter-spacing: 2px; box-shadow: 0 4px 15px rgba(255,0,119,0.4); transition: transform 0.15s, box-shadow 0.15s; pointer-events: auto; }
-    .btn:hover { transform: scale(1.05); box-shadow: 0 6px 22px rgba(255,0,119,0.7); }
-    .btn-secondary { background: rgba(255,255,255,0.1); border: 1px solid rgba(0,240,255,0.5); }
-    .btn-secondary:hover { background: rgba(0,240,255,0.25); }
-    #crosshair { position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; transform: translate(-50%, -50%); border: 2px solid rgba(255,255,255,0.8); border-radius: 50%; pointer-events: none; z-index: 15; display: none; }
+    .minimap-panel { width: 170px; height: 170px; border-radius: 50%; overflow: hidden; border: 3px solid rgba(0, 240, 255, 0.7); box-shadow: 0 0 16px rgba(0, 240, 255, 0.35); background: #080a14; position: relative; }
+    #minimap-canvas { width: 100%; height: 100%; }
+    .minimap-compass { position: absolute; top: 4px; left: 50%; transform: translateX(-50%); font-size: 11px; font-weight: 800; color: #ff007f; }
+    .vehicle-hud { background: rgba(10,12,24,0.75); padding: 8px 14px; border-radius: 8px; border-right: 4px solid #ff007f; text-align: right; backdrop-filter: blur(4px); }
+    .speedo-val { font-size: 26px; font-weight: 900; color: #00f0ff; letter-spacing: -1px; }
+    .speedo-unit { font-size: 12px; color: #8899aa; text-transform: uppercase; margin-left: 2px; }
+    .veh-name { font-size: 13px; font-weight: 700; color: #ffcc00; text-transform: uppercase; letter-spacing: 1px; }
+    .controls-hint { font-size: 12px; color: rgba(255,255,255,0.7); background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 4px; margin-top: 6px; }
+    .screen-overlay { position: absolute; inset: 0; background: rgba(8, 10, 18, 0.88); z-index: 50; display: flex; flex-direction: column; justify-content: center; align-items: center; backdrop-filter: blur(8px); }
+    .title-banner { font-size: 64px; font-weight: 900; letter-spacing: 4px; color: #00f0ff; text-shadow: 0 0 24px #00f0ff, 0 0 48px #ff007f; margin-bottom: 4px; font-style: italic; }
+    .subtitle-banner { font-size: 18px; letter-spacing: 6px; color: #ff007f; text-transform: uppercase; margin-bottom: 24px; font-weight: 700; }
+    .story-intro { max-width: 540px; text-align: center; font-size: 14px; line-height: 1.6; color: #ccddee; margin-bottom: 28px; background: rgba(0,0,0,0.4); padding: 16px 20px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); }
+    .btn-row { display: flex; gap: 16px; margin-bottom: 24px; }
+    .btn-primary { background: linear-gradient(135deg, #00f0ff, #0077ff); color: #050814; font-weight: 900; font-size: 16px; padding: 12px 28px; border: none; border-radius: 4px; cursor: pointer; text-transform: uppercase; letter-spacing: 1.5px; box-shadow: 0 0 16px rgba(0, 240, 255, 0.4); transition: transform 0.1s, box-shadow 0.1s; }
+    .btn-primary:hover { transform: scale(1.04); box-shadow: 0 0 24px rgba(0, 240, 255, 0.7); }
+    .btn-secondary { background: rgba(255, 255, 255, 0.1); color: #fff; font-weight: 700; font-size: 14px; padding: 12px 24px; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 4px; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; }
+    .btn-secondary:hover { background: rgba(255, 255, 255, 0.2); }
+    .controls-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 18px; font-size: 13px; color: #8899aa; text-align: left; max-width: 480px; }
+    .controls-grid span { color: #fff; font-weight: 700; }
+    .banner-wasted { font-size: 72px; font-weight: 900; color: #ff2244; letter-spacing: 6px; text-shadow: 0 0 30px #ff0044; margin-bottom: 12px; }
+    .banner-busted { font-size: 72px; font-weight: 900; color: #0088ff; letter-spacing: 6px; text-shadow: 0 0 30px #0066ff; margin-bottom: 12px; }
+    .banner-passed { font-size: 64px; font-weight: 900; color: #ffdd00; letter-spacing: 4px; text-shadow: 0 0 30px #ffbb00; margin-bottom: 8px; }
+    .hidden { display: none !important; }
   </style>
   <script type="importmap">
   {
@@ -56,76 +62,79 @@
 </head>
 <body>
   <div id="canvas-container"></div>
-  <div id="crosshair"></div>
-
-  <div id="hud">
+  <div id="hud" class="hidden">
     <div class="hud-top">
-      <div id="mission-box" class="hud-panel">
-        <div id="mission-title">Mission</div>
-        <div id="mission-desc">Explore Palma Verde</div>
-        <div id="mission-timer">00:00</div>
-      </div>
-      <div id="wanted-box" class="hud-panel">
-        <span class="star" data-star="1">★</span>
-        <span class="star" data-star="2">★</span>
-        <span class="star" data-star="3">★</span>
-        <span class="star" data-star="4">★</span>
-        <span class="star" data-star="5">★</span>
-      </div>
-    </div>
-
-    <div id="msg-feed"></div>
-    <div id="prompt-box">Press [E] to Enter Vehicle</div>
-
-    <div class="hud-bottom">
-      <div id="minimap-container">
-        <canvas id="minimap" width="170" height="170"></canvas>
-      </div>
-
-      <div id="speedo-box" class="hud-panel">
-        <div id="vehicle-name">Verde GT</div>
-        <div id="speedo-val">0</div>
-        <div id="speedo-unit">MPH</div>
-      </div>
-
-      <div id="stats-box" class="hud-panel">
-        <div id="cash-display">$ 0</div>
-        <div id="health-bar-wrap">
-          <div id="health-bar-fill"></div>
+      <div class="hud-status">
+        <div class="health-bar-bg"><div id="health-bar" class="health-bar-fill"></div></div>
+        <div class="stats-row">
+          <span class="stat-cash" id="stat-cash">$0</span>
+          <span class="stat-ammo" id="stat-ammo">AMMO: 60</span>
         </div>
-        <div id="ammo-display">AMMO: 60</div>
+        <div class="wanted-stars" id="wanted-stars">
+          <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
+        </div>
+      </div>
+      <div class="mission-hud" id="mission-hud">
+        <h3 id="mission-title">Palma Verde</h3>
+        <p id="mission-desc">Explore the coast, acquire wheels, or visit downtown contacts.</p>
+        <div id="mission-timer" class="mission-timer hidden">01:30</div>
       </div>
     </div>
-  </div>
-  <div id="start-overlay" class="modal-overlay">
-    <div style="text-align: center; max-width: 620px; padding: 24px;">
-      <h1 style="font-size: 56px; font-weight: 900; letter-spacing: 6px; background: linear-gradient(135deg, #00f0ff, #ff0077); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-transform: uppercase; margin-bottom: 8px;">Neon Tide</h1>
-      <h3 style="font-size: 18px; color: #ffcc00; letter-spacing: 4px; text-transform: uppercase; margin-bottom: 24px;">Palma Verde &bull; 1986</h3>
-      <p style="font-size: 15px; color: #cfd8dc; line-height: 1.6; margin-bottom: 28px;">
-        Welcome to the sun-soaked underworld of Palma Verde. Build your reputation, dodge the police, steal high-performance rides, and complete syndicate contracts across four distinct city districts.
-      </p>
-      <div style="display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-bottom: 28px;">
-        <button id="btn-start" class="btn">New Game</button>
-        <button id="btn-continue" class="btn btn-secondary">Continue</button>
+    <div class="hud-bottom">
+      <div class="minimap-panel">
+        <div class="minimap-compass">N</div>
+        <canvas id="minimap-canvas" width="170" height="170"></canvas>
       </div>
-      <div style="font-size: 13px; color: #90a4ae; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 14px; text-align: left; line-height: 1.6;">
-        <b>Controls:</b> WASD to Move/Drive &bull; Mouse to Aim/Look &bull; Left Click to Shoot &bull; F to Punch &bull; Shift to Sprint &bull; E to Enter/Exit Car &bull; Space for Handbrake &bull; P/Esc to Pause &bull; M to Mute
+      <div id="feed" class="feed"></div>
+      <div class="vehicle-hud" id="vehicle-hud" style="visibility: hidden;">
+        <div class="veh-name" id="veh-name">SPORTS COUPE</div>
+        <div><span class="speedo-val" id="speedo-val">0</span><span class="speedo-unit">MPH</span></div>
+        <div class="controls-hint">E: Exit | Space: Drift</div>
       </div>
     </div>
   </div>
 
-  <div id="pause-overlay" class="modal-overlay" style="display: none;">
-    <h2 style="font-size: 38px; color: #00f0ff; letter-spacing: 4px; margin-bottom: 24px;">GAME PAUSED</h2>
-    <div style="display: flex; flex-direction: column; gap: 14px; width: 220px;">
-      <button id="btn-resume" class="btn">Resume</button>
-      <button id="btn-save" class="btn btn-secondary">Save Game</button>
-      <button id="btn-restart" class="btn btn-secondary">Restart</button>
+  <div id="start-screen" class="screen-overlay">
+    <div class="title-banner">NEON TIDE</div>
+    <div class="subtitle-banner">Palma Verde Underworld</div>
+    <div class="story-intro">
+      Welcome to Palma Verde — where the ocean breezes meet neon towers and syndicate shadows. Fresh off the interstate with an empty wallet and high ambition, carve your name across the districts. Jack fast rides, outrun the tactical heat, and take down syndicate contracts.
+    </div>
+    <div class="btn-row">
+      <button id="btn-start" class="btn-primary">Start Game</button>
+      <button id="btn-continue" class="btn-secondary hidden">Continue Saved</button>
+    </div>
+    <div class="controls-grid">
+      <div><span>WASD</span> : Move / Steer</div>
+      <div><span>Shift</span> : Sprint</div>
+      <div><span>E</span> : Enter / Exit Vehicle</div>
+      <div><span>F</span> : Melee Strike</div>
+      <div><span>Left Click</span> : Fire Weapon</div>
+      <div><span>Space</span> : Handbrake / Brake</div>
+      <div><span>P / Esc</span> : Pause</div>
+      <div><span>M</span> : Mute Sound</div>
+    </div>
+  </div>
+  <div id="pause-screen" class="screen-overlay hidden">
+    <div class="title-banner" style="font-size: 48px;">PAUSED</div>
+    <div class="btn-row" style="margin-top: 20px;">
+      <button id="btn-resume" class="btn-primary">Resume</button>
+      <button id="btn-save" class="btn-secondary">Save Game</button>
+      <button id="btn-restart" class="btn-secondary">Restart</button>
     </div>
   </div>
 
-  <div id="wasted-overlay" class="modal-overlay" style="display: none; background: rgba(80, 0, 0, 0.85);">
-    <h1 id="wasted-title" style="font-size: 64px; font-weight: 900; color: #ff1133; letter-spacing: 8px; text-shadow: 0 0 30px #ff0000;">WASTED</h1>
-    <p id="wasted-sub" style="font-size: 18px; color: #ffcccc; margin-top: 12px;">Recovered at Palma Verde General Hospital (-$250)</p>
+  <div id="death-screen" class="screen-overlay hidden">
+    <div id="death-title" class="banner-wasted">WASTED</div>
+    <p id="death-sub" style="font-size: 18px; color: #ccddee; margin-bottom: 24px;">Admitted to Palma Verde Memorial. $200 hospital bill charged.</p>
+    <button id="btn-respawn" class="btn-primary">Respawn</button>
+  </div>
+
+  <div id="mission-modal" class="screen-overlay hidden">
+    <div class="banner-passed" id="modal-title">MISSION COMPLETE</div>
+    <div id="modal-desc" style="font-size: 18px; color: #00f0ff; margin-bottom: 8px;">First Wheels Delivered</div>
+    <div id="modal-reward" style="font-size: 24px; font-weight: 800; color: #55ff88; margin-bottom: 24px;">+$500 CASH</div>
+    <button id="btn-modal-ok" class="btn-primary">Continue</button>
   </div>
 
   <script type="module" src="./src/main.js"></script>

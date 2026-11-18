@@ -1,90 +1,139 @@
-// Neon Tide - Deterministic Screenshot Mode for AI Benchmark Judging
+// Deterministic Screenshot Mode for Neon Tide: Palma Verde
 import * as THREE from 'three';
+import { Vehicle } from './vehicles.js';
 
 export function setupDeterministicShot(shotType, game) {
-  const { scene, camera, player, vehicles, police, missions, hud, world } = game;
+  if (!shotType) return false;
+
+  const { player, world, traffic, police, missions, hud, camera } = game;
 
   if (shotType === 'start') {
-    // Shot 1: Title Screen with scenic Palma Verde beachfront vista
-    if (hud.startOverlay) hud.startOverlay.style.display = 'flex';
+    // Title Start Screen
+    const startScreen = document.getElementById('start-screen');
+    if (startScreen) startScreen.classList.remove('hidden');
+    hud.hide();
 
-    // Position camera looking down Ocean Drive with palm trees and sports car
-    camera.position.set(-155, 4.2, 110);
-    camera.lookAt(-140, 2.0, 70);
-
-    // Park sports car in hero angle
-    const heroCar = vehicles.vehicles.find(v => v.config.type === 'sports');
-    if (heroCar) {
-      heroCar.position.set(-140, 0, 70);
-      heroCar.rotation = -0.35;
-      heroCar.updateMeshTransform();
-    }
-  } else if (shotType === 'drive') {
-    // Shot 2: Driving in city, showing speedometer, traffic and minimap
-    if (hud.startOverlay) hud.startOverlay.style.display = 'none';
-
-    const sportsCar = vehicles.vehicles.find(v => v.config.type === 'sports');
-    if (sportsCar) {
-      sportsCar.position.set(-140, 0, 15);
-      sportsCar.rotation = 0;
-      sportsCar.velocity = 16.5; // ~37 MPH
-      sportsCar.updateMeshTransform();
-
-      player.enterVehicle(sportsCar);
-      player.cash = 1850;
-    }
-
-    camera.position.set(-140, 3.8, -12);
-    camera.lookAt(-140, 1.4, 25);
-    hud.update(player, police, vehicles, missions);
+    // Position camera overlooking ocean and palm strip
+    camera.position.set(-150, 18, -40);
+    camera.lookAt(-210, 2, 20);
+    return true;
   }
-  else if (shotType === 'chase') {
-    // Shot 3: High-speed police chase with 3 wanted stars and pursuit units
-    if (hud.startOverlay) hud.startOverlay.style.display = 'none';
 
-    const playerCar = vehicles.vehicles.find(v => v.config.type === 'sports');
-    if (playerCar) {
-      playerCar.position.set(-50, 0, 40);
-      playerCar.rotation = Math.PI / 2;
-      playerCar.velocity = 18.0;
-      playerCar.updateMeshTransform();
-      player.enterVehicle(playerCar);
+  // Hide start menu for in-game action shots
+  const startScreen = document.getElementById('start-screen');
+  if (startScreen) startScreen.classList.add('hidden');
+  hud.show();
+
+  if (shotType === 'drive') {
+    // Driving sleek sports car in Downtown boulevard
+    const car = new Vehicle('SPORTS', world.scene, false);
+    car.position.set(20, 0, -50);
+    car.heading = Math.PI * 0.95;
+    car.velocity = 22.0;
+    car.group.position.copy(car.position);
+    car.group.rotation.y = car.heading;
+
+    player.inVehicle = car;
+    player.mesh.visible = false;
+    player.cash = 1250;
+    player.ammo = 90;
+
+    // Traffic car ahead
+    if (traffic.vehicles.length > 0) {
+      traffic.vehicles[0].position.set(20, 0, 15);
+      traffic.vehicles[0].velocity = 12;
+      traffic.vehicles[0].heading = Math.PI;
+      traffic.vehicles[0].group.position.copy(traffic.vehicles[0].position);
     }
+    // Cinematic chase camera behind car
+    const camBack = new THREE.Vector3(
+      car.position.x - Math.sin(car.heading) * 8.5,
+      car.position.y + 3.8,
+      car.position.z - Math.cos(car.heading) * 8.5
+    );
+    camera.position.copy(camBack);
+    camera.lookAt(car.position.x, car.position.y + 1.2, car.position.z);
 
-    police.setWantedLevel(3);
-    hud.postMessage('CRIME: High-Speed Evasion');
-
-    // Position 2 police cruisers right behind player
-    const cop1 = vehicles.vehicles.find(v => v.isPolice);
-    if (cop1) {
-      cop1.position.set(-68, 0, 42);
-      cop1.rotation = Math.PI / 2 - 0.15;
-      cop1.velocity = 17.5;
-      cop1.sirenActive = true;
-      cop1.updateMeshTransform();
-    }
-
-    camera.position.set(-78, 5.2, 40);
-    camera.lookAt(-45, 1.5, 40);
-    hud.update(player, police, vehicles, missions);
-  } else if (shotType === 'mission') {
-    // Shot 4: Mission 2 Bay Courier in progress with objective beacon and timer
-    if (hud.startOverlay) hud.startOverlay.style.display = 'none';
-
-    missions.startMission(1); // Mission 2: Bay Courier
-    missions.currentStepIndex = 1; // Delivery step
-    missions.timerRemaining = 78; // 1 min 18 sec left
-    missions.updateBeaconPosition();
-
-    player.position.set(-30, 0, 75);
-    player.rotation = 0;
-    player.updateMeshTransform();
-
-    camera.position.set(-30, 4.2, 58);
-    camera.lookAt(-30, 2.0, 115);
-
-    hud.showMission('Bay Courier', 'Deliver package to Downtown High-rise', 78);
-    hud.postMessage('COURIER IN PROGRESS: 01:18');
-    hud.update(player, police, vehicles, missions);
+    hud.updateStats(player, police, missions);
+    hud.renderMinimap(player, traffic, police, missions);
+    return true;
   }
+
+  if (shotType === 'chase') {
+    // 3-Star Police Pursuit
+    const car = new Vehicle('SPORTS', world.scene, false);
+    car.position.set(-60, 0, -80);
+    car.heading = Math.PI * 0.45;
+    car.velocity = 25.5;
+    car.group.position.copy(car.position);
+    car.group.rotation.y = car.heading;
+
+    player.inVehicle = car;
+    player.mesh.visible = false;
+    player.cash = 2400;
+    player.ammo = 120;
+
+    police.wantedStars = 3;
+
+    // Place police cruiser close behind in pursuit
+    const cruiser = new Vehicle('POLICE', world.scene, false);
+    cruiser.position.set(
+      car.position.x - Math.sin(car.heading) * 11.0 + 3.5,
+      0,
+      car.position.z - Math.cos(car.heading) * 11.0
+    );
+    cruiser.heading = car.heading + 0.1;
+    cruiser.velocity = 26.0;
+    cruiser.sirenActive = true;
+    cruiser.group.position.copy(cruiser.position);
+    cruiser.group.rotation.y = cruiser.heading;
+    police.units = [{ type: 'CRUISER', entity: cruiser }];
+    // Camera angled to see player car and pursuing police cruiser
+    const camPos = new THREE.Vector3(
+      car.position.x - Math.sin(car.heading) * 12.0 - 4.5,
+      car.position.y + 4.2,
+      car.position.z - Math.cos(car.heading) * 12.0 + 3.0
+    );
+    camera.position.copy(camPos);
+    camera.lookAt(car.position.x + 2, car.position.y + 1.2, car.position.z);
+
+    hud.updateStats(player, police, missions);
+    hud.renderMinimap(player, traffic, police, missions);
+    return true;
+  }
+
+  if (shotType === 'mission') {
+    // Mission 2: Bay Courier in progress
+    missions.startMission(1);
+    missions.stage = 'DELIVERY';
+    missions.missionTimer = 78; // 01:18 remaining
+    missions.setMarkerPosition(-180, 80);
+
+    const car = new Vehicle('SEDAN', world.scene, false);
+    car.position.set(-110, 0, 78);
+    car.heading = -Math.PI / 2; // Driving west toward Oceanfront dropoff
+    car.velocity = 19.5;
+    car.group.position.copy(car.position);
+    car.group.rotation.y = car.heading;
+
+    player.inVehicle = car;
+    player.mesh.visible = false;
+    player.cash = 1850;
+    player.ammo = 80;
+
+    // Camera following sedan with golden waypoint beam framed ahead
+    const camPos = new THREE.Vector3(
+      car.position.x - Math.sin(car.heading) * 9.0,
+      car.position.y + 3.5,
+      car.position.z - Math.cos(car.heading) * 9.0
+    );
+    camera.position.copy(camPos);
+    camera.lookAt(car.position.x - 18, car.position.y + 2.0, car.position.z);
+
+    hud.updateStats(player, police, missions);
+    hud.renderMinimap(player, traffic, police, missions);
+    return true;
+  }
+
+  return false;
 }

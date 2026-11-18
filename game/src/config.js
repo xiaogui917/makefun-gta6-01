@@ -1,123 +1,156 @@
-// Neon Tide - Global Game Configuration & Numerical Constants
+// Configuration and constants for Neon Tide: Palma Verde
+export const CITY_SIZE = 600;
+export const BLOCK_COUNT = 6;
+export const BLOCK_SIZE = 72;
+export const ROAD_WIDTH = 18;
+export const SIDEWALK_WIDTH = 3.5;
+export const TOTAL_SPAN = BLOCK_COUNT * (BLOCK_SIZE + ROAD_WIDTH); // ~540m
+export const HALF_SPAN = TOTAL_SPAN / 2;
 
-export const WORLD_CONFIG = {
-  CITY_SIZE: 600,
-  BLOCK_COUNT: 6,
-  BLOCK_SIZE: 72,
-  ROAD_WIDTH: 18,
-  SIDEWALK_WIDTH: 3.5,
-  BEACH_WIDTH: 90,
-  OCEAN_WIDTH: 220,
-  BUILDING_MIN_HEIGHT: 15,
-  BUILDING_MAX_HEIGHT: 80,
-  DISTRICTS: {
-    DOWNTOWN: { name: 'Downtown', minHeight: 45, maxHeight: 80, colorPalette: [0x223344, 0x1a2634, 0x334455, 0x0f172a] },
-    BEACHFRONT: { name: 'Oceanfront Promenade', minHeight: 20, maxHeight: 45, colorPalette: [0xee88aa, 0x44ccee, 0xf0e68c, 0xff7799] },
-    PORT: { name: 'Port & Industrial', minHeight: 12, maxHeight: 25, colorPalette: [0x555555, 0x6b5b45, 0x475569, 0x334155] },
-    RESIDENTIAL: { name: 'Palma Suburbs', minHeight: 16, maxHeight: 35, colorPalette: [0xdfd8c8, 0xb8c5d6, 0xdeb887, 0x90a4ae] }
-  }
+export const OCEAN_X = -HALF_SPAN - 40;
+export const BEACH_X = -HALF_SPAN;
+
+export const DISTRICTS = {
+  DOWNTOWN: { name: 'Downtown Core', minX: 0, maxX: HALF_SPAN, minZ: -HALF_SPAN, maxZ: 0, minHeight: 40, maxHeight: 85 },
+  BEACHFRONT: { name: 'Oceanfront Boulevard', minX: -HALF_SPAN, maxX: 0, minZ: -HALF_SPAN, maxZ: 0, minHeight: 20, maxHeight: 45 },
+  PORT: { name: 'Puerto Industrial', minX: 0, maxX: HALF_SPAN, minZ: 0, maxZ: HALF_SPAN, minHeight: 14, maxHeight: 30 },
+  RESIDENTIAL: { name: 'Palma Palms Estates', minX: -HALF_SPAN, maxX: 0, minZ: 0, maxZ: HALF_SPAN, minHeight: 15, maxHeight: 35 },
 };
 
 export const PLAYER_CONFIG = {
-  WALK_SPEED: 7.0,
-  RUN_SPEED: 14.0,
-  TURN_SPEED: 8.0,
-  MAX_HEALTH: 100,
-  START_AMMO: 60,
-  PUNCH_DAMAGE: 25,
-  PUNCH_RANGE: 2.4,
-  GUN_DAMAGE: 45,
-  GUN_RANGE: 65,
-  ENTER_VEHICLE_RADIUS: 3.6
+  maxHealth: 100,
+  walkSpeed: 4.8,
+  runSpeed: 9.6,
+  turnSpeed: 2.8,
+  punchDamage: 25,
+  gunDamage: 45,
+  punchRange: 2.5,
+  gunRange: 55,
+  startAmmo: 60,
+  startCash: 250,
+  hospitalFee: 200,
 };
-export const VEHICLE_CONFIG = {
+export const WANTED_CONFIG = {
+  maxStars: 5,
+  decayCooldown: 14.0, // seconds out of line of sight
+  sightRadius: 60,
+  crimes: {
+    stealVehicle: 1,
+    hitPedestrian: 2,
+    shootWeapon: 1,
+    hitPoliceCar: 2,
+    attackPolice: 3,
+  },
+  spawnIntervals: [999, 12, 8, 5, 3.5, 2.5],
+  maxCops: [0, 2, 4, 6, 8, 12],
+};
+
+export const VEHICLE_TYPES = {
   SPORTS: {
-    type: 'sports',
-    name: 'Verde Turbo GT',
-    maxSpeed: 44,
-    accel: 30,
-    brake: 45,
-    turnSpeed: 2.3,
+    id: 'SPORTS',
+    name: 'Neon GT Turbo',
+    maxSpeed: 28.0,
+    accel: 22.0,
+    brake: 28.0,
+    turnSpeed: 2.7,
+    bodyColor: 0xff0055,
     length: 4.4,
     width: 2.0,
     height: 1.25,
-    colors: [0xff0055, 0x00f0ff, 0xffbb00, 0x7928ca, 0xffffff]
+    weight: 1200,
   },
   SEDAN: {
-    type: 'sedan',
-    name: 'Palma Cruiser',
-    maxSpeed: 32,
-    accel: 20,
-    brake: 38,
-    turnSpeed: 1.9,
+    id: 'SEDAN',
+    name: 'Palma Cruiser Sedan',
+    maxSpeed: 21.0,
+    accel: 15.0,
+    brake: 22.0,
+    turnSpeed: 2.2,
+    bodyColor: 0x2266bb,
     length: 4.6,
-    width: 2.1,
+    width: 2.0,
     height: 1.45,
-    colors: [0x2563eb, 0x475569, 0x059669, 0xd97706, 0xe2e8f0]
+    weight: 1500,
   },
   POLICE: {
-    type: 'police',
-    name: 'Metro Police Cruiser',
-    maxSpeed: 38,
-    accel: 26,
-    brake: 42,
-    turnSpeed: 2.1,
+    id: 'POLICE',
+    name: 'PVPD Interceptor',
+    maxSpeed: 26.0,
+    accel: 20.0,
+    brake: 26.0,
+    turnSpeed: 2.5,
+    bodyColor: 0x111318,
     length: 4.7,
-    width: 2.1,
-    height: 1.5,
-    colors: [0x111111],
-    isPolice: true
+    width: 2.05,
+    height: 1.48,
+    weight: 1650,
   },
   TAXI: {
-    type: 'taxi',
-    name: 'Cab 86',
-    maxSpeed: 30,
-    accel: 18,
-    brake: 36,
-    turnSpeed: 1.8,
+    id: 'TAXI',
+    name: 'Sun Cab',
+    maxSpeed: 20.0,
+    accel: 14.0,
+    brake: 22.0,
+    turnSpeed: 2.2,
+    bodyColor: 0xf5b700,
     length: 4.6,
-    width: 2.1,
-    height: 1.5,
-    colors: [0xf59e0b]
+    width: 2.0,
+    height: 1.48,
+    weight: 1550,
   },
-  TRUCK: {
-    type: 'truck',
-    name: 'Cargo Mule',
-    maxSpeed: 23,
-    accel: 13,
-    brake: 30,
-    turnSpeed: 1.4,
-    length: 5.6,
-    width: 2.4,
+  VAN: {
+    id: 'VAN',
+    name: 'Cargo Box Hauler',
+    maxSpeed: 16.5,
+    accel: 11.0,
+    brake: 18.0,
+    turnSpeed: 1.8,
+    bodyColor: 0x667788,
+    length: 5.2,
+    width: 2.2,
     height: 2.2,
-    colors: [0x334155, 0x0284c7, 0x64748b]
-  }
+    weight: 2400,
+  },
 };
-export const WANTED_CONFIG = {
-  MAX_STARS: 5,
-  COOLDOWN_TIME: 14.0,
-  COP_SPAWN_INTERVAL: [999, 12, 8, 5, 3.5, 2.5],
-  MAX_COPS: [0, 1, 2, 3, 4, 5],
-  CRIMES: {
-    STEAL_CAR: 1,
-    HIT_PEDESTRIAN: 2,
-    FIRE_WEAPON: 1,
-    HIT_POLICE_CAR: 2,
-    ATTACK_POLICE: 3
-  }
+export const PICKUP_CONFIG = {
+  health: { amount: 40, color: 0x33ff66, radius: 1.8, label: 'First Aid Pack' },
+  ammo: { amount: 30, color: 0xffaa00, radius: 1.8, label: 'Munitions Crate' },
+  cash: { amount: 250, color: 0x00f0ff, radius: 1.8, label: 'Cash Stash' },
 };
 
-export const ECONOMY_CONFIG = {
-  MISSION_REWARDS: [500, 1200, 3000],
-  PICKUP_HEALTH: 40,
-  PICKUP_AMMO: 30,
-  PICKUP_CASH: 250,
-  HOSPITAL_FINE: 250
-};
-
-export const CAMERA_CONFIG = {
-  FOOT_OFFSET: { x: 0, y: 2.2, z: 4.8 },
-  CAR_OFFSET: { x: 0, y: 3.2, z: 8.5 },
-  SMOOTH_FACTOR: 0.12,
-  FOV: 65
-};
+export const MISSIONS_DATA = [
+  {
+    id: 'mission_1',
+    name: 'First Wheels',
+    subtitle: 'Acquisition',
+    desc: 'Steal the Neon GT parked outside the Grand Coral Hotel and deliver it to Leo’s Chop Shop in Puerto Industrial.',
+    reward: 500,
+    targetType: 'vehicle_delivery',
+    targetVehicleType: 'SPORTS',
+    spawnPos: { x: -140, z: -120 },
+    dropoffPos: { x: 160, z: 140 },
+    timeLimit: 0,
+  },
+  {
+    id: 'mission_2',
+    name: 'Bay Courier',
+    subtitle: 'Urgent Transit',
+    desc: 'Retrieve encrypted drives from the Downtown Tech Hub and race them across the city to Oceanfront before the 90-second courier window shuts.',
+    reward: 1200,
+    targetType: 'timed_delivery',
+    pickupPos: { x: 150, z: -150 },
+    dropoffPos: { x: -180, z: 80 },
+    timeLimit: 90,
+  },
+  {
+    id: 'mission_3',
+    name: 'Heat Run',
+    subtitle: 'Tactical Escape',
+    desc: 'A syndicate tip triggered a 3-star citywide lockdown. Shake the tactical pursuit and reach the Neon Safehouse on North Beach alive.',
+    reward: 3000,
+    targetType: 'survive_wanted',
+    requiredWanted: 3,
+    safehousePos: { x: -180, z: -190 },
+    timeLimit: 0,
+  },
+];

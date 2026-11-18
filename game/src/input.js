@@ -1,117 +1,111 @@
-// Neon Tide - Keyboard and Mouse Input Handler
-
-export class InputHandler {
+// Input Manager for Neon Tide (Keyboard and Mouse)
+export class InputManager {
   constructor() {
     this.keys = {};
-    this.justPressed = {};
+    this.prevKeys = {};
     this.mouse = {
       isDown: false,
       justClicked: false,
-      deltaX: 0,
-      deltaY: 0,
-      pointerLocked: false
+      movementX: 0,
+      movementY: 0,
     };
-
-    this.onKeyDown = this.onKeyDown.bind(this);
-    this.onKeyUp = this.onKeyUp.bind(this);
-    this.onMouseDown = this.onMouseDown.bind(this);
-    this.onMouseUp = this.onMouseUp.bind(this);
-    this.onMouseMove = this.onMouseMove.bind(this);
-    this.onPointerLockChange = this.onPointerLockChange.bind(this);
-
-    this.init();
+    this.onMuteToggle = null;
+    this.onPauseToggle = null;
+    this.pointerLocked = false;
+    this.initListeners();
   }
 
-  init() {
-    window.addEventListener('keydown', this.onKeyDown);
-    window.addEventListener('keyup', this.onKeyUp);
-    window.addEventListener('mousedown', this.onMouseDown);
-    window.addEventListener('mouseup', this.onMouseUp);
-    window.addEventListener('mousemove', this.onMouseMove);
-    document.addEventListener('pointerlockchange', this.onPointerLockChange);
-  }
+  initListeners() {
+    window.addEventListener('keydown', (e) => {
+      const code = e.code;
+      if (!this.keys[code]) {
+        this.keys[code] = true;
+      }
+      if (code === 'KeyM' && !e.repeat && this.onMuteToggle) {
+        this.onMuteToggle();
+      }
+      if ((code === 'KeyP' || code === 'Escape') && !e.repeat && this.onPauseToggle) {
+        this.onPauseToggle();
+      }
+    });
 
-  destroy() {
-    window.removeEventListener('keydown', this.onKeyDown);
-    window.removeEventListener('keyup', this.onKeyUp);
-    window.removeEventListener('mousedown', this.onMouseDown);
-    window.removeEventListener('mouseup', this.onMouseUp);
-    window.removeEventListener('mousemove', this.onMouseMove);
-    document.removeEventListener('pointerlockchange', this.onPointerLockChange);
-  }
-  onKeyDown(e) {
-    const code = e.code;
-    if (!this.keys[code]) {
-      this.justPressed[code] = true;
-    }
-    this.keys[code] = true;
+    window.addEventListener('keyup', (e) => {
+      this.keys[e.code] = false;
+    });
 
-    // Prevent default scrolling on space / arrow keys
-    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(code)) {
-      e.preventDefault();
-    }
-  }
+    window.addEventListener('mousedown', (e) => {
+      if (e.button === 0) {
+        this.mouse.isDown = true;
+        this.mouse.justClicked = true;
+      }
+    });
 
-  onKeyUp(e) {
-    this.keys[e.code] = false;
-  }
+    window.addEventListener('mouseup', (e) => {
+      if (e.button === 0) {
+        this.mouse.isDown = false;
+      }
+    });
 
-  onMouseDown(e) {
-    if (e.button === 0) {
-      this.mouse.isDown = true;
-      this.mouse.justClicked = true;
-    }
+    window.addEventListener('mousemove', (e) => {
+      if (document.pointerLockElement) {
+        this.mouse.movementX += e.movementX;
+        this.mouse.movementY += e.movementY;
+      }
+    });
   }
-
-  onMouseUp(e) {
-    if (e.button === 0) {
-      this.mouse.isDown = false;
-    }
-  }
-
-  onMouseMove(e) {
-    this.mouse.deltaX += e.movementX || 0;
-    this.mouse.deltaY += e.movementY || 0;
-  }
-
-  onPointerLockChange() {
-    this.mouse.pointerLocked = document.pointerLockElement !== null;
-  }
-
   isDown(code) {
     return !!this.keys[code];
   }
 
-  consumePress(code) {
-    if (this.justPressed[code]) {
-      this.justPressed[code] = false;
-      return true;
-    }
-    return false;
+  isJustPressed(code) {
+    return !!this.keys[code] && !this.prevKeys[code];
   }
 
-  consumeClick() {
-    if (this.mouse.justClicked) {
-      this.mouse.justClicked = false;
-      return true;
-    }
-    return false;
+  getForward() {
+    let f = 0;
+    if (this.keys['KeyW'] || this.keys['ArrowUp']) f += 1;
+    if (this.keys['KeyS'] || this.keys['ArrowDown']) f -= 1;
+    return f;
   }
 
-  getAndResetMouseDelta() {
-    const dx = this.mouse.deltaX;
-    const dy = this.mouse.deltaY;
-    this.mouse.deltaX = 0;
-    this.mouse.deltaY = 0;
+  getTurn() {
+    let t = 0;
+    if (this.keys['KeyD'] || this.keys['ArrowRight']) t -= 1;
+    if (this.keys['KeyA'] || this.keys['ArrowLeft']) t += 1;
+    return t;
+  }
+
+  isSprinting() {
+    return !!(this.keys['ShiftLeft'] || this.keys['ShiftRight']);
+  }
+
+  isHandbrake() {
+    return !!this.keys['Space'];
+  }
+
+  isActionEnterExit() {
+    return this.isJustPressed('KeyE');
+  }
+
+  isActionPunch() {
+    return this.isJustPressed('KeyF');
+  }
+
+  isActionShoot() {
+    const shot = this.mouse.justClicked;
+    this.mouse.justClicked = false;
+    return shot;
+  }
+
+  consumeMouseDelta() {
+    const dx = this.mouse.movementX;
+    const dy = this.mouse.movementY;
+    this.mouse.movementX = 0;
+    this.mouse.movementY = 0;
     return { dx, dy };
   }
 
-  reset() {
-    this.keys = {};
-    this.justPressed = {};
-    this.mouse.isDown = false;
-    this.mouse.justClicked = false;
-    this.mouse.deltaX = 0;
-    this.mouse.deltaY = 0;
+  update() {
+    this.prevKeys = { ...this.keys };
   }
 }

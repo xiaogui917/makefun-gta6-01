@@ -1,214 +1,189 @@
-// Neon Tide - Story Missions, Objectives, Waypoints & Progression System
+// Missions and Story Progression System for Neon Tide
 import * as THREE from 'three';
-import { ECONOMY_CONFIG } from './config.js';
+import { MISSIONS_DATA } from './config.js';
 
-export const MISSIONS_DATA = [
-  {
-    id: 1,
-    title: 'First Wheels',
-    subtitle: 'Steal & Deliver',
-    intro: 'Welcome to Palma Verde. Boost a sports car parked on Ocean Drive and deliver it to the Port chop shop.',
-    reward: ECONOMY_CONFIG.MISSION_REWARDS[0],
-    steps: [
-      { text: 'Steal a sports car from Oceanfront', target: new THREE.Vector3(-140, 0, 70), radius: 5.0, requiresVehicle: 'sports' },
-      { text: 'Deliver the sports car to the Port chop shop', target: new THREE.Vector3(120, 0, -110), radius: 6.0, inVehicle: true }
-    ]
-  },
-  {
-    id: 2,
-    title: 'Bay Courier',
-    subtitle: 'Timed Express Delivery',
-    intro: 'Priority package at the Port. Pick it up and race cross-city to the Downtown high-rise before time runs out!',
-    reward: ECONOMY_CONFIG.MISSION_REWARDS[1],
-    timeLimit: 90,
-    steps: [
-      { text: 'Pick up the package at Port Warehouse', target: new THREE.Vector3(100, 0, -140), radius: 4.5 },
-      { text: 'Deliver the package to Downtown High-rise', target: new THREE.Vector3(-30, 0, 120), radius: 6.0 }
-    ]
-  },
-  {
-    id: 3,
-    title: 'Heat Run',
-    subtitle: 'High-Speed Syndicate Evasion',
-    intro: 'The precinct set up a citywide dragnet! Survive 3-Star wanted heat and reach the safehouse garage!',
-    reward: ECONOMY_CONFIG.MISSION_REWARDS[2],
-    triggerWanted: 3,
-    steps: [
-      { text: 'Evade police dragnet and reach Safehouse', target: new THREE.Vector3(140, 0, 130), radius: 6.5 }
-    ]
-  }
-];
 export class MissionManager {
-  constructor(scene, player, policeManager, audio, hud) {
+  constructor(scene) {
     this.scene = scene;
-    this.player = player;
-    this.police = policeManager;
-    this.audio = audio;
-    this.hud = hud;
+    this.currentMissionIndex = 0;
+    this.activeMission = null;
+    this.missionTimer = 0;
+    this.stage = 'START'; // 'START', 'PICKUP', 'DELIVERY', 'COMPLETE'
+    this.targetVehicle = null;
 
-    this.currentMissionIndex = 0; // 0, 1, 2
-    this.currentStepIndex = 0;
-    this.missionActive = false;
-    this.timerRemaining = 0;
-
-    this.beaconMesh = this.createBeaconMesh();
-    this.scene.add(this.beaconMesh);
-    this.beaconMesh.visible = false;
+    // 3D Waypoint beacon marker
+    this.markerGroup = new THREE.Group();
+    this.buildWaypointMarker();
+    this.scene.add(this.markerGroup);
+    this.markerGroup.visible = false;
   }
 
-  createBeaconMesh() {
-    const group = new THREE.Group();
-
-    // Vertical cylinder light column
-    const beamGeo = new THREE.CylinderGeometry(1.8, 1.8, 45, 16, 1, true);
-    const beamMat = new THREE.MeshBasicMaterial({
-      color: 0xff0077,
+  buildWaypointMarker() {
+    // Vertical light beam cylinder
+    const cylGeo = new THREE.CylinderGeometry(1.6, 1.6, 25, 16, 1, true);
+    const cylMat = new THREE.MeshBasicMaterial({
+      color: 0x00f0ff,
       transparent: true,
       opacity: 0.45,
-      side: THREE.DoubleSide
+      side: THREE.DoubleSide,
     });
-    const beam = new THREE.Mesh(beamGeo, beamMat);
-    beam.position.y = 22.5;
-    group.add(beam);
+    const cyl = new THREE.Mesh(cylGeo, cylMat);
+    cyl.position.y = 12.5;
+    this.markerGroup.add(cyl);
 
-    // Floating diamond marker
-    const markerGeo = new THREE.OctahedronGeometry(1.4, 0);
-    const markerMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
-    this.diamond = new THREE.Mesh(markerGeo, markerMat);
-    this.diamond.position.y = 2.5;
-    group.add(this.diamond);
-
-    return group;
+    // Ground ring
+    const ringGeo = new THREE.RingGeometry(1.4, 2.2, 24);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xff007f,
+      side: THREE.DoubleSide,
+    });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.1;
+    this.markerGroup.add(ring);
   }
 
-  startMission(index) {
-    if (index >= MISSIONS_DATA.length) return;
+  setMarkerPosition(x, z) {
+    this.markerGroup.position.set(x, 0, z);
+    this.markerGroup.visible = true;
+  }
+
+  hideMarker() {
+    this.markerGroup.visible = false;
+  }
+  startMission(index = 0, trafficManager = null, policeManager = null) {
+    if (index >= MISSIONS_DATA.length) return false;
     this.currentMissionIndex = index;
-    this.currentStepIndex = 0;
-    this.missionActive = true;
+    this.activeMission = MISSIONS_DATA[index];
+    this.missionTimer = this.activeMission.timeLimit || 0;
 
-    const data = MISSIONS_DATA[index];
-    this.timerRemaining = data.timeLimit || 0;
-
-    if (data.triggerWanted && this.police) {
-      this.police.setWantedLevel(data.triggerWanted);
+    if (this.activeMission.id === 'mission_1') {
+      this.stage = 'PICKUP';
+      // Find or spawn sports car near spawnPos
+      this.setMarkerPosition(this.activeMission.spawnPos.x, this.activeMission.spawnPos.z);
+    } else if (this.activeMission.id === 'mission_2') {
+      this.stage = 'PICKUP';
+      this.setMarkerPosition(this.activeMission.pickupPos.x, this.activeMission.pickupPos.z);
+    } else if (this.activeMission.id === 'mission_3') {
+      this.stage = 'DELIVERY';
+      this.setMarkerPosition(this.activeMission.safehousePos.x, this.activeMission.safehousePos.z);
+      if (policeManager) {
+        policeManager.setWantedLevel(3);
+      }
     }
-
-    this.updateBeaconPosition();
-    if (this.hud) {
-      this.hud.showMission(data.title, data.steps[0].text, this.timerRemaining);
-      this.hud.postMessage(`MISSION STARTED: ${data.title}`);
-    }
-  }
-  updateBeaconPosition() {
-    const data = MISSIONS_DATA[this.currentMissionIndex];
-    if (!data || !this.missionActive) {
-      this.beaconMesh.visible = false;
-      return;
-    }
-    const step = data.steps[this.currentStepIndex];
-    if (step && step.target) {
-      this.beaconMesh.position.set(step.target.x, 0, step.target.z);
-      this.beaconMesh.visible = true;
-    } else {
-      this.beaconMesh.visible = false;
-    }
+    return true;
   }
 
-  getActiveTarget() {
-    if (!this.missionActive) return null;
-    const data = MISSIONS_DATA[this.currentMissionIndex];
-    if (!data) return null;
-    const step = data.steps[this.currentStepIndex];
-    return step ? step.target : null;
+  getCurrentObjective() {
+    if (!this.activeMission) {
+      return {
+        title: 'Palma Verde',
+        desc: 'Explore the city, acquire weapons and vehicles, or trigger wanted heat.',
+        timerText: null,
+      };
+    }
+
+    let desc = this.activeMission.desc;
+    if (this.activeMission.id === 'mission_1') {
+      desc = this.stage === 'PICKUP' ? 'Locate and steal the Neon GT sports car at Grand Coral Hotel.' : 'Deliver the Neon GT to Leo’s Chop Shop in Puerto Industrial.';
+    } else if (this.activeMission.id === 'mission_2') {
+      desc = this.stage === 'PICKUP' ? 'Pick up encrypted drives at Downtown Tech Hub.' : 'Deliver the drives to Oceanfront contact before time runs out!';
+    } else if (this.activeMission.id === 'mission_3') {
+      desc = 'Evade 3-star tactical police lockdown and reach the North Beach Safehouse!';
+    }
+
+    let timerText = null;
+    if (this.missionTimer > 0) {
+      const mins = Math.floor(this.missionTimer / 60);
+      const secs = Math.floor(this.missionTimer % 60);
+      timerText = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    return {
+      title: `${this.activeMission.name} (${this.currentMissionIndex + 1}/3)`,
+      desc,
+      timerText,
+    };
   }
+  update(dt, player, policeManager, audio, onComplete, onFail, onFeed) {
+    if (!this.activeMission) return;
 
-  completeMission() {
-    const data = MISSIONS_DATA[this.currentMissionIndex];
-    this.player.cash += data.reward;
-    this.missionActive = false;
-    this.beaconMesh.visible = false;
-
-    if (this.audio) this.audio.playMissionComplete();
-    if (this.hud) {
-      this.hud.showMission('MISSION COMPLETE!', `Earned $${data.reward}`, 0);
-      this.hud.postMessage(`MISSION COMPLETE: +$${data.reward}`);
+    // Rotate waypoint beacon
+    if (this.markerGroup.visible) {
+      this.markerGroup.rotation.y += dt * 1.5;
     }
 
-    if (this.police && data.triggerWanted) {
-      this.police.clearWanted();
+    const playerPos = player.inVehicle ? player.inVehicle.position : player.position;
+
+    // Timer check for timed missions
+    if (this.missionTimer > 0) {
+      this.missionTimer -= dt;
+      if (this.missionTimer <= 0) {
+        if (onFail) onFail('TIME EXPIRED - DELIVERY FAILED');
+        this.activeMission = null;
+        this.hideMarker();
+        return;
+      }
     }
 
-    // Auto-advance to next mission after 4s
-    setTimeout(() => {
-      if (this.currentMissionIndex + 1 < MISSIONS_DATA.length) {
-        this.startMission(this.currentMissionIndex + 1);
-      } else {
-        if (this.hud) {
-          this.hud.showMission('ALL MISSIONS COMPLETED', 'Palma Verde is yours!', 0);
-          this.hud.postMessage('VICTORY: Palma Verde Underworld Conquered!');
+    // Mission 1: First Wheels
+    if (this.activeMission.id === 'mission_1') {
+      if (this.stage === 'PICKUP') {
+        if (player.inVehicle && player.inVehicle.typeKey === 'SPORTS') {
+          this.stage = 'DELIVERY';
+          this.setMarkerPosition(this.activeMission.dropoffPos.x, this.activeMission.dropoffPos.z);
+          if (onFeed) onFeed('Neon GT acquired! Proceed to Puerto Industrial dropoff.');
         }
-      }
-    }, 4000);
-  }
-  failMission(reason = 'Mission Failed!') {
-    this.missionActive = false;
-    this.beaconMesh.visible = false;
-    if (this.hud) {
-      this.hud.showMission('MISSION FAILED', reason, 0);
-      this.hud.postMessage(`FAILED: ${reason}`);
-    }
-  }
-
-  update(dt) {
-    if (!this.missionActive) return;
-
-    // Animate beacon diamond
-    if (this.diamond) {
-      this.diamond.rotation.y += dt * 2.2;
-      this.diamond.rotation.x += dt * 1.1;
-    }
-
-    const data = MISSIONS_DATA[this.currentMissionIndex];
-    if (!data) return;
-
-    // Countdown timer if applicable
-    if (this.timerRemaining > 0) {
-      this.timerRemaining -= dt;
-      if (this.hud) this.hud.updateTimer(this.timerRemaining);
-      if (this.timerRemaining <= 0) {
-        this.failMission('Time Expired!');
-        return;
-      }
-    }
-
-    // Check step condition
-    const step = data.steps[this.currentStepIndex];
-    if (!step) return;
-
-    // Proximity check to step target
-    const dist = this.player.position.distanceTo(step.target);
-    if (dist < step.radius) {
-      if (step.requiresVehicle && (!this.player.isDriving || this.player.currentVehicle.config.type !== step.requiresVehicle)) {
-        // Needs specific vehicle
-        return;
-      }
-      if (step.inVehicle && !this.player.isDriving) {
-        return;
-      }
-
-      // Step completed!
-      this.currentStepIndex++;
-      if (this.currentStepIndex >= data.steps.length) {
-        this.completeMission();
-      } else {
-        const nextStep = data.steps[this.currentStepIndex];
-        this.updateBeaconPosition();
-        if (this.hud) {
-          this.hud.showMission(data.title, nextStep.text, this.timerRemaining);
-          this.hud.postMessage(`OBJECTIVE: ${nextStep.text}`);
+      } else if (this.stage === 'DELIVERY') {
+        const dist = playerPos.distanceTo(this.markerGroup.position);
+        if (dist < 8.0 && player.inVehicle) {
+          this.completeCurrentMission(player, audio, onComplete);
         }
       }
     }
+    // Mission 2: Bay Courier
+    else if (this.activeMission.id === 'mission_2') {
+      if (this.stage === 'PICKUP') {
+        const dist = playerPos.distanceTo(this.markerGroup.position);
+        if (dist < 5.0) {
+          this.stage = 'DELIVERY';
+          this.setMarkerPosition(this.activeMission.dropoffPos.x, this.activeMission.dropoffPos.z);
+          if (onFeed) onFeed('Drives collected! 90-second countdown started!');
+        }
+      } else if (this.stage === 'DELIVERY') {
+        const dist = playerPos.distanceTo(this.markerGroup.position);
+        if (dist < 7.0) {
+          this.completeCurrentMission(player, audio, onComplete);
+        }
+      }
+    }
+    // Mission 3: Heat Run
+    else if (this.activeMission.id === 'mission_3') {
+      const dist = playerPos.distanceTo(this.markerGroup.position);
+      if (dist < 7.0) {
+        if (policeManager) policeManager.setWantedLevel(0);
+        this.completeCurrentMission(player, audio, onComplete);
+      }
+    }
+  }
+
+  completeCurrentMission(player, audio, onComplete) {
+    const reward = this.activeMission.reward;
+    const missionName = this.activeMission.name;
+    player.cash += reward;
+    audio.playMissionComplete();
+    this.hideMarker();
+
+    if (onComplete) {
+      onComplete({
+        title: 'MISSION COMPLETE',
+        name: missionName,
+        reward,
+        nextIndex: this.currentMissionIndex + 1,
+      });
+    }
+
+    this.activeMission = null;
+    this.currentMissionIndex++;
   }
 }
